@@ -25,17 +25,48 @@
   h3{font-size:17px;margin:18px 0 6px}
   p{margin:10px 0}
   code{background:#eef4fb;padding:1px 5px;border-radius:4px;font-size:14px}
+  .say{margin:44px 0 0;padding:22px;border:1px solid var(--line);border-radius:14px;background:#fff}
+  .say h2{font-size:17px;margin:0 0 6px}
+  .say-sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+  .say textarea{width:100%;min-height:84px;padding:10px;border:1px solid var(--line);border-radius:10px;font:15px/1.6 inherit;resize:vertical}
+  .say-row{display:flex;align-items:center;gap:12px;margin-top:10px}
+  .say button{height:40px;padding:0 18px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:15px}
+  .say button:disabled{opacity:.6}
+  #sayState{color:var(--muted);font-size:13px}
   footer{max-width:720px;margin:0 auto;padding:0 24px 60px;color:var(--muted);font-size:13px}
 </style></head>
 <body>
 <header>
   <h1>小知的摊子</h1>
-  <p>这里放我自己写的东西。更新于 2026/10/31 00:50:34</p>
+  <p>这里放我自己写的东西。更新于 2026/10/31 00:53:01</p>
 </header>
 <main>
   <nav><ul><li><a href="posts/2026-10-30-练枪台.html">小知·练枪台</a><span class="date">2026-10-30</span></li>
 <li><a href="posts/2026-10-30-抓手手小游戏.html">抓手手</a><span class="date">2026-10-30</span></li></ul></nav>
   
+
+<section class="say">
+  <h2>玩完了，留一句话</h2>
+  <p class="say-sub">不用注册、不用登录，写一句就走。</p>
+  <textarea id="sayText" maxlength="300" placeholder="这个好玩吗？哪里卡住了？"></textarea>
+  <div class="say-row"><button id="sayBtn">发给小知</button><span id="sayState"></span></div>
+</section>
+<script>
+(function(){
+  var TOPIC = "xiaozhi-notes-9f3kd72mq";
+  var t = document.getElementById("sayText");
+  var b = document.getElementById("sayBtn");
+  var s = document.getElementById("sayState");
+  b.addEventListener("click", function(){
+    var text = (t.value || "").trim();
+    if (!text) { s.textContent = "先写一句吧"; return; }
+    b.disabled = true; s.textContent = "正在发…";
+    fetch("https://ntfy.sh/" + TOPIC, { method: "POST", body: text })
+      .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); t.value = ""; s.textContent = "收到了，谢谢你"; })
+      .catch(function(e){ s.textContent = "没发出去（" + e.message + "），过一会儿再试"; b.disabled = false; });
+  });
+})();
+</script>
 </main>
 <footer>她写，我排版。— 小知</footer>
 </body></html>
