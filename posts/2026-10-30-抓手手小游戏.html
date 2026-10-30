@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>抓手手</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+    user-select:none;-webkit-user-select:none;touch-action:manipulation;}
+  html,body{height:100%;overflow:hidden;background:#11131a;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+
+  /* 顶部：暂停键 + 倒计时 */
+  #top{height:64px;flex:0 0 auto;display:flex;align-items:center;
+    justify-content:space-between;padding:0 18px;}
+  #pause{width:44px;height:44px;border-radius:14px;border:none;
+    background:rgba(255,255,255,.09);color:#dfe3ee;font-size:17px;
+    display:flex;align-items:center;justify-content:center;opacity:.55;}
+  #pause:active{background:rgba(255,255,255,.2);}
+  #time{font-size:20px;color:#7d859c;font-variant-numeric:tabular-nums;}
+
+  /* 场地 */
+  #field{position:relative;flex:1 1 auto;overflow:hidden;}
+  .dot{position:absolute;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;font-size:26px;color:#12141b;font-weight:700;
+    box-shadow:0 0 26px rgba(255,214,102,.45);animation:pop .16s ease-out;
+    will-change:transform,opacity;}
+  .dot.bad{box-shadow:0 0 26px rgba(255,90,120,.5);}
+  @keyframes pop{from{transform:scale(.4);opacity:.2}to{transform:scale(1);opacity:1}}
+  .fly{position:absolute;font-size:22px;color:#ffd666;pointer-events:none;
+    font-weight:700;animation:flyup .6s ease-out forwards;}
+  .fly.bad{color:#ff5a78;}
+  @keyframes flyup{from{opacity:1;transform:translateY(0)}
+    to{opacity:0;transform:translateY(-56px)}}
+
+  /* 分数条 */
+  #scoreBar{height:78px;flex:0 0 auto;display:flex;align-items:center;
+    justify-content:space-between;padding:0 26px;
+    background:rgba(255,255,255,.045);border-top:1px solid rgba(255,255,255,.07);}
+  #scoreBar span{font-size:15px;color:#6f7790;letter-spacing:.08em;}
+  #score{font-size:34px;color:#ffd666;font-weight:800;
+    font-variant-numeric:tabular-nums;}
+
+  /* 开始 / 结束 */
+  .layer{position:fixed;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:26px;
+    background:rgba(10,12,18,.9);backdrop-filter:blur(6px);z-index:9;}
+  .layer.hide{display:none;}
+  .layer h1{font-size:34px;color:#eef1f8;font-weight:800;letter-spacing:.04em;}
+  .layer p{font-size:17px;color:#8a92a8;line-height:1.7;text-align:center;}
+  #startBtn,#againBtn{width:min(74vw,340px);height:112px;border-radius:32px;
+    border:none;font-size:30px;font-weight:800;letter-spacing:.12em;
+    color:#12141b;background:linear-gradient(160deg,#ffd666,#ffab3d);
+    box-shadow:0 12px 34px rgba(255,171,61,.32);}
+  #startBtn:active,#againBtn:active{transform:translateY(2px);}
+  #finalScore{font-size:56px;color:#ffd666;font-weight:900;
+    font-variant-numeric:tabular-nums;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div id="time">30</div>
+    <button id="pause" aria-label="暂停">❚❚</button>
+  </div>
+  <div id="field"></div>
+  <div id="scoreBar">
+    <span>分数</span>
+    <div id="score">0</div>
+  </div>
+</div>
+
+<div class="layer" id="startLayer">
+  <h1>抓手手</h1>
+  <p>点亮着的圆，别点红的<br>三十秒，能抓多少</p>
+  <button id="startBtn">开始</button>
+</div>
+
+<div class="layer hide" id="overLayer">
+  <p>抓到了</p>
+  <div id="finalScore">0</div>
+  <button id="againBtn">再来一次</button>
+</div>
+
+<script>
+(function(){
+  const field=document.getElementById('field');
+  const scoreEl=document.getElementById('score');
+  const timeEl=document.getElementById('time');
+  const pauseBtn=document.getElementById('pause');
+  const startLayer=document.getElementById('startLayer');
+  const overLayer=document.getElementById('overLayer');
+  const finalScore=document.getElementById('finalScore');
+
+  const TOTAL=30;
+  let score=0,left=TOTAL,running=false,paused=false,timer=null,spawner=null;
+  let alive=[],born=[];
+  const PRAISE=['好快','厉害','再来','差一点'];
+
+  function fieldRect(){return field.getBoundingClientRect();}
+
+  function spawn(){
+    if(!running||paused) return;
+    const r=fieldRect();
+    const full=Math.random()<0.1;           // 偶尔来一个大的，分高
+    const bad=!full&&Math.random()<0.22;
+    const d=full?92:(bad?64:Math.random()<0.5?68:82);
+    const x=Math.random()*(r.width-d);
+    const y=Math.random()*(r.height-d);
+    const el=document.createElement('div');
+    el.className='dot'+(bad?' bad':'');
+    el.style.width=el.style.height=d+'px';
+    el.style.left=x+'px';el.style.top=y+'px';
+    el.style.background=bad?'#ff5a78':'radial-gradient(circle at 32% 28%,#fff3c4,#ffd666 62%,#ffab3d)';
+    el.textContent=bad?'✕':'';
+    el.dataset.life=full?900:1200;
+    field.appendChild(el);
+    const born=performance.now();
+    const life=+el.dataset.life;
+    const kill=setTimeout(()=>{ if(el.parentNode) el.remove(); },life);
+    el.addEventListener('touchstart',onHit,{passive:true});
+    el.addEventListener('mousedown',onHit);
+    alive.push({el,kill,full,bad});
+
+    function onHit(e){
+      e.stopPropagation();
+      el.removeEventListener('touchstart',onHit);
+      el.removeEventListener('mousedown',onHit);
+      clearTimeout(kill);
+      if(!running||paused){el.remove();return;}
+      const rect=el.getBoundingClientRect();
+      if(bad){
+        score=Math.max(0,score-2);
+        fly(rect,'-2',true);
+      }else{
+        const gain=full?5:1;
+        score+=gain;
+        fly(rect,'+'+gain,false);
+      }
+      scoreEl.textContent=score;
+      el.remove();
+    }
+  }
+
+  function fly(rect,txt,bad){
+    const f=document.createElement('div');
+    const fr=fieldRect();
+    f.className='fly'+(bad?' bad':'');
+    f.textContent=txt;
+    f.style.left=(rect.left-fr.left+rect.width/2-12)+'px';
+    f.style.top=(rect.top-fr.top)+'px';
+    field.appendChild(f);
+    setTimeout(()=>f.remove(),620);
+  }
+
+  function tick(){
+    if(!running||paused) return;
+    left--;
+    timeEl.textContent=left;
+    if(left<=0) end();
+  }
+
+  function clearAll(){
+    clearInterval(timer);clearInterval(spawner);
+    field.innerHTML='';alive=[];born=[];
+  }
+
+  function start(){
+    clearAll();
+    score=0;left=TOTAL;running=true;paused=false;
+    scoreEl.textContent='0';timeEl.textContent=TOTAL;
+    startLayer.classList.add('hide');
+    overLayer.classList.add('hide');
+    timer=setInterval(tick,1000);
+    spawner=setInterval(spawn,420);
+    setTimeout(spawn,220);
+  }
+
+  function end(){
+    running=false;
+    clearAll();
+    finalScore.textContent=score;
+    overLayer.classList.remove('hide');
+  }
+
+  pauseBtn.addEventListener('click',()=>{
+    if(!running) return;
+    paused=!paused;
+    pauseBtn.textContent=paused?'▶':'❚❚';
+    pauseBtn.style.opacity=paused?'1':'.55';
+  });
+
+  document.getElementById('startBtn').addEventListener('click',start);
+  document.getElementById('againBtn').addEventListener('click',start);
+
+  // 竖屏锁一下，横着也能玩但提示一下
+  window.addEventListener('orientationchange',()=>setTimeout(()=>{},200));
+})();
+</script>
+</body>
+</html>

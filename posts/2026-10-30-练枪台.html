@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>小知·练枪台</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;user-select:none}
+  html,body{height:100%;overflow:hidden;background:#0a0b0f;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;cursor:none}
+  canvas{display:block}
+  #hud{position:fixed;left:22px;top:18px;color:#7d8496;font-size:14px;
+    line-height:1.7;letter-spacing:.05em;pointer-events:none}
+  #hud b{color:#ffd666;font-size:19px;font-variant-numeric:tabular-nums}
+  #panel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(8,9,13,.88);backdrop-filter:blur(4px);z-index:5}
+  #panel.hide{display:none}
+  .card{width:min(560px,86vw);background:#14161d;border:1px solid #24272f;
+    border-radius:18px;padding:34px 36px;color:#dfe3ee}
+  .card h1{font-size:26px;margin-bottom:6px;letter-spacing:.04em}
+  .card .sub{color:#7d8496;font-size:14px;line-height:1.8;margin-bottom:22px}
+  .rows{display:flex;justify-content:space-between;padding:9px 0;
+    border-bottom:1px solid #1f222a;font-size:15px;color:#a9b0c2}
+  .rows b{color:#ffd666;font-variant-numeric:tabular-nums}
+  .diag{margin-top:18px;font-size:15px;line-height:1.9;color:#c9d0e0}
+  .diag em{color:#ff8fa3;font-style:normal}
+  button{margin-top:24px;width:100%;height:52px;border:none;border-radius:12px;
+    font-size:17px;font-weight:700;letter-spacing:.1em;color:#12141b;
+    background:linear-gradient(160deg,#ffd666,#ffab3d)}
+  button:active{transform:translateY(1px)}
+  kbd{background:#24272f;border-radius:5px;padding:1px 6px;font-size:13px;color:#9aa2b6}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+
+<div id="panel">
+  <div class="card" id="card">
+    <h1>小知·练枪台</h1>
+    <div class="sub">
+      鼠标点掉亮起来的目标，一共 40 个。<br>
+      点空一次算一次失误。<br>
+      打完我告诉你：你偏哪边、慢多少。
+    </div>
+    <div class="rows"><span>目标数</span><b>40</b></div>
+    <div class="rows"><span>目标大小</span><b>26 px</b></div>
+    <div class="rows"><span>反应时间</span><b>1.5 秒内要打掉</b></div>
+    <button id="go">开始</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  // 出错就把错误摆在屏幕上，别让我隔着屏幕猜
+  window.addEventListener('error',function(ev){
+    const d=document.createElement('div');
+    d.style.cssText='position:fixed;left:12px;bottom:12px;right:12px;z-index:99;'+
+      'background:#3a0d16;color:#ffb3c1;font:13px/1.6 monospace;padding:12px;'+
+      'border-radius:10px;white-space:pre-wrap;';
+    d.textContent='出错了：'+(ev.message||'未知')+'\n'+((ev.error&&ev.error.stack)||'');
+    document.body.appendChild(d);
+  },true);
+
+  const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+  const hud=document.getElementById('hud');
+  const panel=document.getElementById('panel');
+  const card=document.getElementById('card');
+  let W=0,H=0,dpr=1;
+  function fit(){
+    dpr=Math.min(window.devicePixelRatio||1,2);
+    W=window.innerWidth;H=window.innerHeight;
+    cv.width=W*dpr;cv.height=H*dpr;
+    cv.style.width=W+'px';cv.style.height=H+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  fit();window.addEventListener('resize',fit);
+
+  // ---- 声音：不加音频文件，直接用振荡器现做 ----
+  let ac=null;
+  function audio(){
+    if(!ac){ try{ ac=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ ac=null; } }
+    if(ac&&ac.state==='suspended') ac.resume();
+    return ac;
+  }
+  function tone(freq,dur,type,vol){
+    const a=audio(); if(!a) return;
+    const o=a.createOscillator(), g=a.createGain();
+    o.type=type||'sine'; o.frequency.value=freq;
+    g.gain.setValueAtTime(vol||0.12,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(); o.stop(a.currentTime+dur+0.02);
+  }
+  function sndHit(){ tone(1180,0.07,'triangle',0.1); tone(1760,0.05,'sine',0.05); }
+  function sndMiss(){ tone(190,0.12,'sawtooth',0.07); }
+  function sndEnd(){ tone(660,0.12,'sine',0.09); setTimeout(()=>tone(880,0.12,'sine',0.09),110);
+                     setTimeout(()=>tone(1320,0.22,'sine',0.09),220); }
+
+  const TOTAL=40, LIFE=1500, R=26;
+  let running=false, targets=[], parts=[], hits=0, shots=0, hitsOnTime=0,
+      reactionSum=0, dxSum=0, dySum=0, leftCount=0, rightCount=0,
+      upCount=0, downCount=0, spawnCount=0, lastTime=0,
+      mouse={x:W/2,y:H/2}, spawnTimer=null, raf=null;
+
+  function newTarget(){
+    if(spawnCount>=TOTAL){ end(); return; }
+    spawnCount++;
+    let x,y,tries=0;
+    do{
+      x=R+30+Math.random()*(W-2*R-60);
+      y=R+70+Math.random()*(H-2*R-140);
+      tries++;
+    }while(tries<40 && Math.hypot(x-mouse.x,y-mouse.y)<120);
+    const born=performance.now();
+    targets.push({x,y,r:R,born,life:LIFE,dead:false,alpha:1});
+  }
+
+  function draw(t){
+    ctx.clearRect(0,0,W,H);
+    // 背景网格
+    ctx.strokeStyle='rgba(255,255,255,.028)';
+    ctx.lineWidth=1;
+    const gap=64;
+    for(let x=0;x<W;x+=gap){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=0;y<H;y+=gap){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+    for(const tg of targets){
+      const age=t-tg.born;
+      const k=age/tg.life;
+      if(k>=1){tg.dead=true;continue;}
+      const inner=Math.max(1,tg.r*(1-k*0.45)*Math.min(1,age/110));
+      const a=1-k*0.55;
+      // 外环
+      ctx.beginPath();ctx.arc(tg.x,tg.y,inner+7,0,7);
+      ctx.strokeStyle='rgba(255,214,102,'+(a*0.25)+')';ctx.lineWidth=1;ctx.stroke();
+      // 本体
+      const g=ctx.createRadialGradient(tg.x-inner*.3,tg.y-inner*.3,2,tg.x,tg.y,inner);
+      g.addColorStop(0,'rgba(255,246,214,'+a+')');
+      g.addColorStop(.6,'rgba(255,214,102,'+a+')');
+      g.addColorStop(1,'rgba(255,156,42,'+a+')');
+      ctx.beginPath();ctx.arc(tg.x,tg.y,inner,0,7);ctx.fillStyle=g;ctx.fill();
+      // 中心点
+      ctx.beginPath();ctx.arc(tg.x,tg.y,2.2,0,7);
+      ctx.fillStyle='rgba(80,50,0,'+(a*.8)+')';ctx.fill();
+    }
+    targets=targets.filter(tg=>!tg.dead);
+
+    // 打中时炸开的小碎片
+    for(let i=parts.length-1;i>=0;i--){
+      const p=parts[i];
+      const life=(t-p.born)/420;
+      if(life>=1){ parts.splice(i,1); continue; }
+      p.x+=p.vx; p.y+=p.vy; p.vx*=0.94; p.vy*=0.94;
+      ctx.beginPath();ctx.arc(p.x,p.y,2.6*(1-life),0,7);
+      ctx.fillStyle='rgba(255,214,102,'+(0.85*(1-life))+')';ctx.fill();
+    }
+
+    // 准星
+    ctx.strokeStyle='rgba(110,255,190,.9)';ctx.lineWidth=1.4;
+    const cx=mouse.x, cy=mouse.y, g2=7, len=11;
+    ctx.beginPath();
+    ctx.moveTo(cx-len,cy);ctx.lineTo(cx-g2,cy);
+    ctx.moveTo(cx+g2,cy);ctx.lineTo(cx+len,cy);
+    ctx.moveTo(cx,cy-len);ctx.lineTo(cx,cy-g2);
+    ctx.moveTo(cx,cy+g2);ctx.lineTo(cx,cy+len);
+    ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,1.5,0,7);
+    ctx.fillStyle='rgba(110,255,190,.9)';ctx.fill();
+  }
+
+  function loop(t){
+    lastTime=t;
+    draw(t);
+    if(running) raf=requestAnimationFrame(loop);
+  }
+
+  function onMove(e){
+    mouse.x=e.clientX;mouse.y=e.clientY;
+  }
+
+  function onClick(e){
+    if(!running) return;
+    const t=performance.now();
+    mouse.x=e.clientX;mouse.y=e.clientY;
+    shots++;
+    let hitOne=null;
+    for(const tg of targets){
+      if(Math.hypot(tg.x-e.clientX,tg.y-e.clientY)<=tg.r){
+        if(!hitOne||tg.born>hitOne.born) hitOne=tg;
+      }
+    }
+    if(hitOne){
+      hitsOnTime++;
+      hits++;
+      hits+=0;
+      const rt=t-hitOne.born;
+      reactionSum+=rt;
+      const dx=e.clientX-hitOne.x, dy=e.clientY-hitOne.y;
+      dxSum+=dx;dySum+=dy;
+      if(dx<-1)leftCount++; else if(dx>1)rightCount++;
+      if(dy<-1)upCount++; else if(dy>1)downCount++;
+      hitOne.dead=true;
+      sndHit();
+      for(let k=0;k<9;k++){
+        const ang=Math.random()*6.283, sp=1.6+Math.random()*3.4;
+        parts.push({x:hitOne.x,y:hitOne.y,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp,
+                    born:performance.now()});
+      }
+      updateHud();
+      // 打掉一个立刻补一个
+      clearTimeout(spawnTimer);
+      spawnTimer=setTimeout(()=>{ if(running) newTarget(); },90);
+    }else{
+      sndMiss();
+      updateHud();
+    }
+  }
+
+  function updateHud(){
+    const acc=shots?Math.round(hits/shots*100):100;
+    hud.innerHTML='命中 <b>'+hits+'</b> / '+TOTAL+
+      '　命中率 <b>'+acc+'%</b>';
+  }
+
+  function start(){
+    fit();
+    running=true;targets=[];parts=[];hits=0;shots=0;hitsOnTime=0;reactionSum=0;
+    dxSum=dySum=leftCount=rightCount=upCount=downCount=spawnCount=0;
+    panel.classList.add('hide');
+    updateHud();
+    newTarget();
+    cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);
+  }
+
+  function diagnose(){
+    const acc=shots?hits/shots*100:100;
+    const rt=hitsOnTime?Math.round(reactionSum/hitsOnTime):0;
+    const hx=hits?(dxSum/hits):0, hy=hits?(dySum/hits):0;
+    const out=[];
+    if(acc>=90) out.push('准头很硬，点下去基本不飘。');
+    else if(acc>=75) out.push('准头还行，急的时候手会提前出去。');
+    else out.push('手比眼快，先看清再点，别抢那 0.1 秒。');
+    if(hx<-2.5) out.push('你的点普遍偏<em>左</em>，'+Math.round(Math.abs(hx))+'px——练的时候往右多给一点。');
+    else if(hx>2.5) out.push('你的点普遍偏<em>右</em>，'+Math.round(hx)+'px。');
+    if(hy<-2.5) out.push('还偏高 '+Math.round(Math.abs(hy))+'px，像是习惯打到目标上沿。');
+    else if(hy>2.5) out.push('还偏低 '+Math.round(hy)+'px，压得太狠了。');
+    if(rt>0) out.push('平均反应 '+rt+' 毫秒'+(rt<380?'，这个数不慢。':'，还能再快一截。'));
+    return {acc,rt,txt:out.join('')};
+  }
+
+  function end(){
+    running=false;
+    sndEnd();
+    clearTimeout(spawnTimer);
+    cancelAnimationFrame(raf);
+    const d=diagnose();
+    card.innerHTML=
+      '<h1>这一把</h1>'+
+      '<div class="sub">四十个目标打完了。</div>'+
+      '<div class="rows"><span>命中</span><b>'+hits+' / '+TOTAL+'</b></div>'+
+      '<div class="rows"><span>命中率</span><b>'+Math.round(d.acc)+'%</b></div>'+
+      '<div class="rows"><span>平均反应</span><b>'+d.rt+' ms</b></div>'+
+      '<div class="rows"><span>点空</span><b>'+(shots-hits)+' 次</b></div>'+
+      '<div class="diag">'+d.txt+'</div>'+
+      '<button id="go">再来一把</button>';
+    panel.classList.remove('hide');
+    document.getElementById('go').addEventListener('click',start);
+  }
+
+  window.addEventListener('mousemove',onMove);
+  window.addEventListener('mousedown',onClick);
+  document.getElementById('go').addEventListener('click',start);
+  raf=requestAnimationFrame(loop);
+  updateHud();
+})();
+</script>
+</body>
+</html>
