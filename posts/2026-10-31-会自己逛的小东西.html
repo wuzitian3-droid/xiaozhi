@@ -61,7 +61,8 @@
     tx: 0, ty: 0,
     blink: 0, nextBlink: 2 + Math.random() * 3,
     huntWait: 6 + Math.random() * 4,   // 离下次自己找乐子还有多久
-    happy: 0                            // 抓到东西之后的得意，会晃一下
+    happy: 0,                           // 抓到东西之后的得意，会晃一下
+    huff: 0                             // 抓不到时生闷气的抖动
   };
 
   // ——— 那颗小东西自己要追的光 ———
@@ -91,6 +92,7 @@
     if (s === 'wander'){ pet.dur = rnd(2, 3.5); pickTarget(); }
     else if (s === 'rest'){ pet.dur = rnd(1.2, 2.6); }
     else if (s === 'hunt'){ pet.dur = 12; }
+    else if (s === 'annoyed'){ pet.dur = rnd(1.0, 1.6); }
     else { pet.dur = 99; }
   }
 
@@ -110,6 +112,7 @@
   function update(dt){
     pet.t += dt;
     pet.happy = Math.max(0, pet.happy - dt);
+    pet.huff = Math.max(0, pet.huff - dt);
 
     // 眨眼
     pet.nextBlink -= dt;
@@ -129,7 +132,7 @@
     }
 
     // 它自己隔一会儿会开始玩：追那颗光
-    if (!finger && pet.state !== 'hunt'){
+    if (!finger && (pet.state === 'wander' || pet.state === 'rest')){
       pet.huntWait -= dt;
       if (pet.huntWait <= 0 && pet.t > pet.dur * 0.5){
         setState('hunt');
@@ -141,17 +144,23 @@
     if (pet.t > pet.dur){
       if (pet.state === 'wander') setState(Math.random() < 0.3 ? 'rest' : 'wander');
       else if (pet.state === 'rest') setState('wander');
-      else if (pet.state === 'hunt') setState('rest');   // 追累了，歇一下
+      else if (pet.state === 'hunt'){ pet.huff = 1.3; setState('annoyed'); }   // 追不到，赌气
+      else if (pet.state === 'annoyed') setState('rest');
     }
 
     // 目标
     var tx = pet.tx, ty = pet.ty;
-    if (pet.state === 'hunt'){ tx = prey.x; ty = prey.y; }
+    if (pet.state === 'hunt' || pet.state === 'annoyed'){ tx = prey.x; ty = prey.y; }
 
     var ax = 0, ay = 0;
     if (pet.state === 'rest'){
       ax = -pet.vx * 2.4;
       ay = -pet.vy * 2.4;
+    } else if (pet.state === 'annoyed'){
+      ax = -pet.vx * 3;
+      ay = -pet.vy * 3;
+      pet.vx += Math.sin(pet.t * 42) * 110 * dt;
+      pet.vy += Math.cos(pet.t * 35) * 70 * dt;
     } else {
       var dx = tx - pet.x, dy = ty - pet.y;
       var d = Math.hypot(dx, dy) || 1;
@@ -318,26 +327,44 @@
     // 脸
     ctx.save();
     var wob = pet.happy > 0 ? Math.sin(now / 60) * 3 * (pet.happy / 0.9) : 0;
-    ctx.translate(pet.x + (pet.happy > 0 ? 0 : 0), pet.y - (pet.happy > 0 ? Math.abs(wob) : 0));
+    var shake = pet.huff > 0 ? Math.sin(now / 28) * 1.8 * pet.huff : 0;
+    ctx.translate(pet.x + shake, pet.y - (pet.happy > 0 ? Math.abs(wob) : 0));
     var ex = pet.lookX * 7, ey = pet.lookY * 7;
     var open = pet.blink > 0 ? 0.12 : 1;
     var rEye = 6.2;
-    ctx.fillStyle = '#eaf7ff';
-    ctx.beginPath();
-    ctx.ellipse(-5 + ex, -4 + ey, rEye, rEye * open, 0, 0, TAU);
-    ctx.ellipse(  7 + ex, -4 + ey, rEye, rEye * open, 0, 0, TAU);
-    ctx.fill();
-    if (pet.blink <= 0){
-      ctx.fillStyle = '#101c30';
+    var mad = pet.state === 'annoyed';
+
+    if (mad){
+      // 赌气：眼睛眯成两条斜线
+      ctx.strokeStyle = '#eaf7ff';
+      ctx.lineWidth = 2.6;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.arc(-5 + ex * 1.4, -4 + ey * 1.4, 2.6, 0, TAU);
-      ctx.arc( 7 + ex * 1.4, -4 + ey * 1.4, 2.6, 0, TAU);
+      ctx.moveTo(-11 + ex * 0.4, -6 + ey * 0.4); ctx.lineTo(-1 + ex * 0.4, -2 + ey * 0.4);
+      ctx.moveTo( 3 + ex * 0.4, -2 + ey * 0.4); ctx.lineTo(13 + ex * 0.4, -6 + ey * 0.4);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#eaf7ff';
+      ctx.beginPath();
+      ctx.ellipse(-5 + ex, -4 + ey, rEye, rEye * open, 0, 0, TAU);
+      ctx.ellipse(  7 + ex, -4 + ey, rEye, rEye * open, 0, 0, TAU);
       ctx.fill();
+      if (pet.blink <= 0){
+        ctx.fillStyle = '#101c30';
+        ctx.beginPath();
+        ctx.arc(-5 + ex * 1.4, -4 + ey * 1.4, 2.6, 0, TAU);
+        ctx.arc( 7 + ex * 1.4, -4 + ey * 1.4, 2.6, 0, TAU);
+        ctx.fill();
+      }
     }
+
     ctx.strokeStyle = 'rgba(160,220,245,.7)';
     ctx.lineWidth = 1.6;
     ctx.beginPath();
-    if (pet.happy > 0){
+    if (mad){
+      // 抿着嘴
+      ctx.moveTo(-2, 7); ctx.lineTo(5, 7);
+    } else if (pet.happy > 0){
       // 抓到了，张开嘴笑
       ctx.arc(1, 3, 5.5, 0.05 * Math.PI, 0.95 * Math.PI);
     } else {
@@ -345,6 +372,15 @@
     }
     ctx.stroke();
     ctx.restore();
+
+    // 生气时头顶冒两下「哼」
+    if (pet.state === 'annoyed'){
+      var hk = pet.t / Math.max(0.01, pet.dur);
+      ctx.fillStyle = 'rgba(255,170,140,' + (0.85 * (1 - hk)).toFixed(3) + ')';
+      ctx.font = 'bold 15px -apple-system,sans-serif';
+      ctx.fillText('哼', pet.x + 16, pet.y - 34 - hk * 14);
+    }
+
 
     // 歇着冒泡泡
     if (pet.state === 'rest'){
