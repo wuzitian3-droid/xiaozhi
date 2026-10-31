@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>小知·一拍</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:#0a0b0f;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  canvas{display:block}
+  #hud{position:fixed;left:22px;top:16px;color:#7d8496;font-size:14px;
+    line-height:1.7;letter-spacing:.05em;pointer-events:none}
+  #hud b{color:#ffd666;font-size:20px;font-variant-numeric:tabular-nums}
+  #panel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(8,9,13,.9);z-index:5;padding:24px}
+  #panel.hide{display:none}
+  .card{width:min(520px,88vw);background:#14161d;border:1px solid #24272f;
+    border-radius:18px;padding:32px 30px;color:#dfe3ee}
+  .card h1{font-size:26px;margin-bottom:8px;letter-spacing:.04em}
+  .card .sub{color:#7d8496;font-size:14px;line-height:1.9;margin-bottom:20px}
+  .rows{display:flex;justify-content:space-between;padding:9px 0;
+    border-bottom:1px solid #1f222a;font-size:15px;color:#a9b0c2}
+  .rows b{color:#ffd666;font-variant-numeric:tabular-nums}
+  button{margin-top:24px;width:100%;height:56px;border:none;border-radius:14px;
+    font-size:18px;font-weight:700;letter-spacing:.14em;color:#12141b;
+    background:linear-gradient(160deg,#ffd666,#ffab3d)}
+  button:active{transform:translateY(1px)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+
+<div id="panel">
+  <div class="card" id="card">
+    <h1>小知·一拍</h1>
+    <div class="sub">一根针在轨道上来回跑。<br>它跑到亮着的那一小段里，你按一下。<br>越靠中间，分越高；按空了，掉一条命。</div>
+    <button id="btn">开始</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var cvs = document.getElementById('c');
+  var ctx = cvs.getContext('2d');
+  var hud = document.getElementById('hud');
+  var panel = document.getElementById('panel');
+  var card = document.getElementById('card');
+  var btn = document.getElementById('btn');
+
+  var W = 0, H = 0, DPR = 1;
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cvs.width = Math.floor(W * DPR);
+    cvs.height = Math.floor(H * DPR);
+    cvs.style.width = W + 'px';
+    cvs.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var state = 'ready';     // ready | playing | over
+  var pos = 0, dir = 1, speed = 0.42;      // pos 0..1
+  var zoneC = 0.5, zoneW = 0.22;
+  var score = 0, lives = 3, best = 0, combo = 0;
+  var judged = null;       // {t, kind, msg, exact}
+  var shakeT = 0;
+  var trackY = 0, trackH = 0;
+
+  function layout(){
+    trackH = Math.max(46, Math.min(64, H * 0.07));
+    trackY = H * 0.62;
+  }
+  layout();
+  window.addEventListener('resize', layout);
+
+  function newZone(){
+    var minC = zoneW / 2 + 0.04;
+    var maxC = 1 - minC;
+    zoneC = minC + Math.random() * (maxC - minC);
+  }
+
+  function reset(){
+    score = 0; lives = 3; combo = 0; speed = 0.42;
+    pos = 0; dir = 1; zoneW = 0.22; judged = null;
+    newZone();
+  }
+
+  function start(){
+    reset();
+    state = 'playing';
+    panel.classList.add('hide');
+  }
+
+  function over(){
+    state = 'over';
+    if (score > best) best = score;
+    card.innerHTML =
+      '<h1>打完了</h1>' +
+      '<div class="sub">' + (score >= 100 ? '手挺稳的诶。' : '再试试，针比你想的快一点。') + '</div>' +
+      '<div class="rows"><span>这一把</span><b>' + score + '</b></div>' +
+      '<div class="rows"><span>最好</span><b>' + best + '</b></div>' +
+      '<button id="btn">再来一把</button>';
+    panel.classList.remove('hide');
+    document.getElementById('btn').addEventListener('click', start);
+  }
+
+  function hit(){
+    if (state !== 'playing') { if (state === 'over') return; start(); return; }
+    var d = Math.abs(pos - zoneC);
+    var half = zoneW / 2;
+    if (d <= half){
+      var acc = 1 - d / half;              // 0 边缘 .. 1 正中
+      var gain = Math.round(10 + acc * 40);
+      score += gain;
+      combo += 1;
+      judged = {t: 0, kind: 'good',
+        msg: acc > 0.75 ? '正中' : (acc > 0.35 ? '中了' : '擦边'),
+        exact: Math.round(acc * 1000) / 10};
+      zoneW = Math.max(0.055, zoneW * 0.9);
+      speed = Math.min(1.9, speed * 1.09 + 0.02);
+    } else {
+      lives -= 1;
+      combo = 0;
+      judged = {t: 0, kind: 'bad', msg: '空了', exact: 0};
+      zoneW = Math.min(0.26, zoneW * 1.15);
+      speed = Math.max(0.36, speed * 0.94);
+      shakeT = 0.22;
+      if (lives <= 0){ over(); return; }
+    }
+    newZone();
+    pos = Math.random() * 0.15;
+    dir = Math.random() < 0.5 ? 1 : -1;
+  }
+
+  function onTap(e){
+    if (e && e.cancelable) e.preventDefault();
+    hit();
+  }
+  cvs.addEventListener('pointerdown', onTap);
+  window.addEventListener('keydown', function(e){
+    if (e.code === 'Space' || e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); hit(); }
+  });
+
+  var last = performance.now();
+  function frame(now){
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    if (state === 'playing'){
+      pos += dir * speed * dt;
+      if (pos > 1){ pos = 2 - pos; dir = -1; }
+      if (pos < 0){ pos = -pos; dir = 1; }
+      if (judged) judged.t += dt;
+      if (shakeT > 0) shakeT -= dt;
+      hud.innerHTML = '分 <b>' + score + '</b><br>命 ' + lives + '　连 ' + combo;
+    } else if (state === 'ready'){
+      pos += dir * 0.3 * dt;
+      if (pos > 1){ pos = 2 - pos; dir = -1; }
+      if (pos < 0){ pos = -pos; dir = 1; }
+      hud.innerHTML = '分 <b>' + score + '</b>';
+    }
+
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  function draw(){
+    ctx.save();
+    if (shakeT > 0){
+      var s = shakeT * 30;
+      ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+    }
+    ctx.clearRect(-30, -30, W + 60, H + 60);
+    ctx.fillStyle = '#0a0b0f';
+    ctx.fillRect(-30, -30, W + 60, H + 60);
+
+    var x0 = W * 0.08, x1 = W * 0.92, tw = x1 - x0;
+    var ty = trackY;
+
+    // 轨道
+    ctx.fillStyle = '#161821';
+    ctx.strokeStyle = '#24272f';
+    ctx.lineWidth = 1;
+    roundRect(x0, ty, tw, trackH, 12);
+    ctx.fill(); ctx.stroke();
+
+    // 目标区
+    var zx = x0 + (zoneC - zoneW / 2) * tw;
+    var zw = zoneW * tw;
+    var g = ctx.createLinearGradient(zx, 0, zx + zw, 0);
+    g.addColorStop(0, 'rgba(255,171,61,.18)');
+    g.addColorStop(0.5, 'rgba(255,214,102,.5)');
+    g.addColorStop(1, 'rgba(255,171,61,.18)');
+    ctx.fillStyle = g;
+    roundRect(zx, ty + 4, zw, trackH - 8, 8);
+    ctx.fill();
+
+    // 中线
+    ctx.strokeStyle = 'rgba(255,240,190,.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(zx + zw / 2, ty + trackH * 0.22);
+    ctx.lineTo(zx + zw / 2, ty + trackH * 0.78);
+    ctx.stroke();
+
+    // 针
+    var px = x0 + pos * tw;
+    ctx.fillStyle = '#eef2ff';
+    ctx.shadowColor = 'rgba(200,215,255,.7)';
+    ctx.shadowBlur = 14;
+    roundRect(px - 3, ty - 16, 6, trackH + 32, 3);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 命中反馈
+    if (judged && judged.t < 0.9){
+      var a = 1 - judged.t / 0.9;
+      ctx.globalAlpha = a;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = judged.kind === 'good' ? '#ffd666' : '#ff7b8a';
+      ctx.font = '700 26px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+      ctx.fillText(judged.msg, W / 2, ty - 54 - judged.t * 20);
+      if (judged.kind === 'good'){
+        ctx.globalAlpha = a * 0.75;
+        ctx.fillStyle = '#a9b0c2';
+        ctx.font = '15px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+        ctx.fillText('精准 ' + judged.exact.toFixed(1) + '%', W / 2, ty - 26 - judged.t * 20);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // 标题
+    if (state !== 'playing'){
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#3d4354';
+      ctx.font = '600 15px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+      ctx.fillText('拍一下，或者按空格', W / 2, ty + trackH + 60);
+    }
+
+    ctx.restore();
+  }
+
+  function roundRect(x, y, w, h, r){
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  btn.addEventListener('click', start);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
