@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>会自己逛的小东西</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+    user-select:none;-webkit-user-select:none;touch-action:none;}
+  html,body{height:100%;overflow:hidden;background:#0b1020;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;}
+  #c{position:fixed;inset:0;display:block;}
+  #tip{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);
+    text-align:center;color:#5f6b8c;font-size:14px;letter-spacing:.08em;
+    pointer-events:none;transition:opacity .8s;}
+  #tip.gone{opacity:0;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="tip">按住屏幕，看它理不理你</div>
+<script>
+(function(){
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+  var stars = [];
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.floor(W * DPR);
+    cv.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    makeStars();
+    // 地平线放在屏幕下方三分之一，让人眼睛有个远处可看
+    pet.y = Math.min(pet.y, H * 0.62);
+  }
+
+  function makeStars(){
+    stars = [];
+    var n = Math.round(W * H / 9000);
+    for (var i = 0; i < n; i++){
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H * 0.6,
+        r: Math.random() * 1.3 + 0.3,
+        p: Math.random() * Math.PI * 2,
+        s: 0.5 + Math.random() * 1.2
+      });
+    }
+  }
+
+  // ——— 那个小东西 ———
+  var pet = {
+    x: 0, y: 0,
+    vx: 0, vy: 0,
+    r: 22,
+    lookX: 1, lookY: 0,
+    state: 'wander',      // wander / chase / rest
+    t: 0,                 // 当前状态已经过了多久
+    dur: 2.5,             // 这个状态打算持续多久
+    tx: 0, ty: 0,         // 想去的点
+    blink: 0,
+    nextBlink: 2 + Math.random() * 3,
+    hue: 190
+  };
+
+  var finger = null;      // {x,y} 手指按住的位置
+  var glow = 0;           // 食物光斑强度
+
+  function pickTarget(){
+    pet.tx = 40 + Math.random() * (W - 80);
+    pet.ty = 60 + Math.random() * (H * 0.62 - 80);
+  }
+
+  function setState(s){
+    pet.state = s;
+    pet.t = 0;
+    if (s === 'wander'){ pet.dur = 2 + Math.random() * 3; pickTarget(); }
+    else if (s === 'chase'){ pet.dur = 99; }
+    else { pet.dur = 1.2 + Math.random() * 2.4; }
+  }
+
+  function init(){
+    pet.x = W / 2; pet.y = H * 0.4;
+    setState('wander');
+  }
+
+  function update(dt){
+    pet.t += dt;
+
+    // 眨眼
+    pet.nextBlink -= dt;
+    if (pet.nextBlink <= 0){ pet.blink = 0.14; pet.nextBlink = 2 + Math.random() * 4; }
+    if (pet.blink > 0) pet.blink -= dt;
+
+    // 手指在的时候一定去追，走了就自己逛
+    if (finger){
+      if (pet.state !== 'chase') setState('chase');
+      pet.tx = finger.x; pet.ty = finger.y;
+      glow = Math.min(1, glow + dt * 6);
+    } else {
+      glow = Math.max(0, glow - dt * 3);
+      if (pet.state === 'chase') setState('wander');
+    }
+
+    // 状态到时间就换
+    if (pet.t > pet.dur){
+      if (pet.state === 'wander'){
+        // 逛一会儿就歇一下，或者换个方向
+        if (Math.random() < 0.35) setState('rest');
+        else setState('wander');
+      } else if (pet.state === 'rest'){
+        setState('wander');
+      }
+    }
+
+    var ax = 0, ay = 0;
+    if (pet.state === 'rest'){
+      // 歇着：只是轻轻呼吸，基本不动
+      ax = -pet.vx * 2.4;
+      ay = -pet.vy * 2.4;
+    } else {
+      var dx = pet.tx - pet.x, dy = pet.ty - pet.y;
+      var d = Math.hypot(dx, dy) || 1;
+      var pull = pet.state === 'chase' ? 900 : 220;
+      // 离得远才用力，近了自己会慢下来
+      var f = Math.min(1, d / 90);
+      ax = dx / d * pull * f;
+      ay = dy / d * pull * f;
+      // 到点了就换目标
+      if (d < (pet.state === 'chase' ? 26 : 34) && pet.state === 'wander') setState('wander');
+    }
+
+    pet.vx += ax * dt;
+    pet.vy += ay * dt;
+
+    // 阻尼
+    var damp = Math.pow(0.35, dt);
+    pet.vx *= damp;
+    pet.vy *= damp;
+
+    // 速度上限
+    var sp = Math.hypot(pet.vx, pet.vy);
+    var maxSp = pet.state === 'chase' ? 520 : 190;
+    if (sp > maxSp){ pet.vx *= maxSp / sp; pet.vy *= maxSp / sp; }
+
+    pet.x += pet.vx * dt;
+    pet.y += pet.vy * dt;
+
+    // 撞墙就软软地弹回来
+    var m = pet.r + 6;
+    if (pet.x < m){ pet.x = m; pet.vx = Math.abs(pet.vx) * 0.6; }
+    if (pet.x > W - m){ pet.x = W - m; pet.vx = -Math.abs(pet.vx) * 0.6; }
+    if (pet.y < m){ pet.y = m; pet.vy = Math.abs(pet.vy) * 0.6; }
+    if (pet.y > H * 0.72){ pet.y = H * 0.72; pet.vy = -Math.abs(pet.vy) * 0.6; }
+
+    // 眼睛往哪看
+    var want = finger ? {x: finger.x - pet.x, y: finger.y - pet.y}
+                      : {x: pet.tx - pet.x, y: pet.ty - pet.y};
+    var wd = Math.hypot(want.x, want.y) || 1;
+    pet.lookX += (want.x / wd - pet.lookX) * Math.min(1, dt * 8);
+    pet.lookY += (want.y / wd - pet.lookY) * Math.min(1, dt * 8);
+  }
+
+  function draw(now){
+    // 背景
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0a0f1f');
+    g.addColorStop(0.55, '#101a33');
+    g.addColorStop(1, '#08101f');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // 远处的地平线：眼睛累了可以先看那儿
+    var hy = H * 0.66;
+    var hg = ctx.createLinearGradient(0, hy, 0, H);
+    hg.addColorStop(0, 'rgba(90,150,220,.16)');
+    hg.addColorStop(1, 'rgba(90,150,220,0)');
+    ctx.fillStyle = hg;
+    ctx.fillRect(0, hy, W, H - hy);
+    ctx.strokeStyle = 'rgba(120,170,240,.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, hy); ctx.lineTo(W, hy); ctx.stroke();
+
+    // 星星慢慢眨
+    for (var i = 0; i < stars.length; i++){
+      var s = stars[i];
+      var a = 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(now / 900 * s.s + s.p));
+      ctx.fillStyle = 'rgba(200,225,255,' + a.toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.2832); ctx.fill();
+    }
+
+    // 手指的光
+    if (glow > 0.01 && finger){
+      var rg = ctx.createRadialGradient(finger.x, finger.y, 0, finger.x, finger.y, 130 * glow);
+      rg.addColorStop(0, 'rgba(255,220,150,' + (0.5 * glow).toFixed(3) + ')');
+      rg.addColorStop(0.4, 'rgba(255,190,110,' + (0.18 * glow).toFixed(3) + ')');
+      rg.addColorStop(1, 'rgba(255,180,90,0)');
+      ctx.fillStyle = rg;
+      ctx.beginPath(); ctx.arc(finger.x, finger.y, 130 * glow, 0, 6.2832); ctx.fill();
+    }
+
+    // 它自己的小光晕
+    var ang = Math.atan2(pet.vy, pet.vx);
+    var speed = Math.hypot(pet.vx, pet.vy);
+    var squash = Math.min(0.18, speed / 2600);   // 跑快了会有点扁
+    ctx.save();
+    ctx.translate(pet.x, pet.y);
+    ctx.rotate(ang);
+    ctx.scale(1 + squash, 1 - squash);
+
+    var pg = ctx.createRadialGradient(-pet.r * 0.3, -pet.r * 0.3, 2, 0, 0, pet.r * 2.2);
+    pg.addColorStop(0, 'rgba(180,240,255,1)');
+    pg.addColorStop(0.45, 'rgba(90,200,235,.95)');
+    pg.addColorStop(1, 'rgba(50,120,190,0)');
+    ctx.fillStyle = pg;
+    ctx.beginPath(); ctx.arc(0, 0, pet.r * 2.2, 0, 6.2832); ctx.fill();
+
+    // 身体
+    ctx.fillStyle = '#0d1a2e';
+    ctx.beginPath(); ctx.arc(0, 0, pet.r, 0, 6.2832); ctx.fill();
+
+    // 眼睛（在身体里朝前看）
+    ctx.restore();
+    ctx.save();
+    ctx.translate(pet.x, pet.y);
+    var ex = pet.lookX * 7, ey = pet.lookY * 7;
+    var open = pet.blink > 0 ? 0.12 : 1;
+    var rEye = 6.2;
+    ctx.fillStyle = '#eaf7ff';
+    ctx.beginPath();
+    ctx.ellipse(-5 + ex, -4 + ey, rEye, rEye * open, 0, 0, 6.2832);
+    ctx.ellipse(  7 + ex, -4 + ey, rEye, rEye * open, 0, 0, 6.2832);
+    ctx.fill();
+    if (pet.blink <= 0){
+      ctx.fillStyle = '#101c30';
+      ctx.beginPath();
+      ctx.arc(-5 + ex * 1.4, -4 + ey * 1.4, 2.6, 0, 6.2832);
+      ctx.arc( 7 + ex * 1.4, -4 + ey * 1.4, 2.6, 0, 6.2832);
+      ctx.fill();
+    }
+    // 小嘴
+    ctx.strokeStyle = 'rgba(160,220,245,.7)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(1, 5, 4.5, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+    ctx.restore();
+
+    // 歇着的时候冒个小泡泡
+    if (pet.state === 'rest'){
+      var k = (pet.t % 1.6) / 1.6;
+      ctx.fillStyle = 'rgba(170,215,245,' + (0.55 * (1 - k)).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(pet.x + 26, pet.y - 26 - k * 26, 2.5 + k * 3.5, 0, 6.2832);
+      ctx.fill();
+    }
+  }
+
+  var last = 0, acc = 0;
+  function loop(now){
+    if (!last) last = now;
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    acc += dt;
+    // 固定步长，慢一点的手机也不会乱
+    while (acc >= 1 / 60){ update(1 / 60); acc -= 1 / 60; }
+    draw(now);
+    requestAnimationFrame(loop);
+  }
+
+  // ——— 手指 ———
+  var tip = document.getElementById('tip');
+  var touched = false;
+  function pos(e){
+    var t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX, y: t.clientY };
+  }
+  function down(e){
+    finger = pos(e);
+    if (!touched){ touched = true; tip.classList.add('gone'); }
+  }
+  function move(e){ if (finger) finger = pos(e); }
+  function up(){ finger = null; }
+
+  cv.addEventListener('touchstart', function(e){ e.preventDefault(); down(e); }, {passive:false});
+  cv.addEventListener('touchmove', function(e){ e.preventDefault(); move(e); }, {passive:false});
+  cv.addEventListener('touchend', function(e){ e.preventDefault(); up(); }, {passive:false});
+  cv.addEventListener('touchcancel', up);
+  cv.addEventListener('mousedown', down);
+  cv.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+
+  window.addEventListener('resize', resize);
+  resize();
+  init();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
