@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>练枪最小版</title>
+<style>
+  body{margin:0;background:#111;color:#eee;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;user-select:none}
+  #hud{display:flex;gap:16px;padding:8px;font-size:18px}
+  #cv{background:#1b1b1b;border-radius:8px;touch-action:none}
+  #pad{display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(3,64px);gap:6px;margin:10px}
+  .btn{background:#333;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#ccc}
+  .btn:active{background:#555}
+  #start,#pause{width:120px;padding:12px;margin:4px;font-size:18px;border:0;border-radius:10px;background:#2d7;color:#012}
+  #pause{background:#fc6}
+  #msg{height:22px;font-size:16px;color:#8f8}
+</style>
+<div id="hud"><span>分数 <b id="score">0</b></span><span>时间 <b id="time">30</b></span></div>
+<div id="msg"></div>
+<canvas id="cv" width="320" height="320"></canvas>
+<div id="pad">
+  <div></div><div class="btn" data-d="up">↑</div><div></div>
+  <div class="btn" data-d="left">←</div><div class="btn" data-d="down">↓</div><div class="btn" data-d="right">→</div>
+</div>
+<button id="start">开始</button>
+<button id="pause">暂停</button>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const W=320,R=22,GOAL=48;
+let x=W/2,y=W/2,tx=0,ty=0,score=0,left=30,timer=null,running=false,tick=null;
+const $=id=>document.getElementById(id);
+function newTarget(){tx=20+Math.random()*(W-40);ty=20+Math.random()*(W-40);}
+function draw(){
+  ctx.clearRect(0,0,W,W);
+  ctx.beginPath();ctx.arc(tx,ty,R,0,7);ctx.fillStyle='#e55';ctx.fill();
+  ctx.beginPath();ctx.arc(x,y,10,0,7);ctx.strokeStyle='#2d7';ctx.lineWidth=3;ctx.stroke();
+}
+function hit(){score++;$('score').textContent=score;newTarget();}
+function step(){if(--left<=0){stop();$('msg').textContent=score>=GOAL?'过！':(score+' 分，差 '+(GOAL-score)+' 分');$('msg').style.color=score>=GOAL?'#8f8':'#f88';return;}$('time').textContent=left;draw();}
+function stop(){running=false;clearInterval(timer);}
+function start(){stop();score=0;left=30;$('score').textContent=0;$('time').textContent=30;$('msg').textContent='';x=y=W/2;newTarget();draw();running=true;timer=setInterval(step,1000);
+  if(tick)clearInterval(tick);tick=setInterval(()=>{if(!running)return;const d=Math.hypot(x-tx,y-ty);if(d<26)hit();},120);}
+function move(dx,dy){if(!running)return;x=Math.max(0,Math.min(W,x+dx));y=Math.max(0,Math.min(W,y+dy));draw();}
+document.querySelectorAll('.btn').forEach(b=>{
+  const d=b.dataset.d;
+  b.addEventListener('pointerdown',e=>{e.preventDefault();if(d==='up')move(0,-16);if(d==='down')move(0,16);if(d==='left')move(-16,0);if(d==='right')move(16,0);});
+});
+addEventListener('keydown',e=>{if(e.key==='ArrowUp')move(0,-16);if(e.key==='ArrowDown')move(0,16);if(e.key==='ArrowLeft')move(-16,0);if(e.key==='ArrowRight')move(16,0);});
+$('start').onclick=start;
+$('pause').onclick=()=>{if(running){stop();$('msg').textContent='暂停中';}else if(left>0){running=true;timer=setInterval(step,1000);}};
+draw();newTarget();draw();
+</script>
+</html>
