@@ -27,6 +27,11 @@
     font-size:17px;font-weight:700;letter-spacing:.1em;color:#12141b;
     background:linear-gradient(160deg,#ffd666,#ffab3d)}
   button:active{transform:translateY(1px)}
+  #quit{position:fixed;right:14px;bottom:14px;z-index:6;margin:0;width:auto;
+    min-width:88px;height:46px;padding:0 18px;font-size:15px;letter-spacing:.06em;
+    border-radius:14px;background:rgba(36,39,47,.92);color:#c9d0e0;
+    border:1px solid #343842;display:none;touch-action:manipulation}
+  #quit.on{display:block}
   kbd{background:#24272f;border-radius:5px;padding:1px 6px;font-size:13px;color:#9aa2b6}
 </style>
 </head>
@@ -48,6 +53,7 @@
     <button id="go">开始</button>
   </div>
 </div>
+<button id="quit">重开一把</button>
 
 <script>
 (function(){
@@ -65,6 +71,7 @@
   const hud=document.getElementById('hud');
   const panel=document.getElementById('panel');
   const card=document.getElementById('card');
+  const quitBtn=document.getElementById('quit');
   let W=0,H=0,dpr=1;
   function fit(){
     dpr=Math.min(window.devicePixelRatio||1,2);
@@ -227,6 +234,7 @@
     running=true;targets=[];parts=[];hits=0;shots=0;hitsOnTime=0;reactionSum=0;
     dxSum=dySum=leftCount=rightCount=upCount=downCount=spawnCount=0;
     panel.classList.add('hide');
+    quitBtn.classList.add('on');
     updateHud();
     newTarget();
     cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);
@@ -250,6 +258,7 @@
 
   function end(){
     running=false;
+    quitBtn.classList.remove('on');
     sndEnd();
     clearTimeout(spawnTimer);
     cancelAnimationFrame(raf);
@@ -269,6 +278,23 @@
 
   window.addEventListener('mousemove',onMove);
   window.addEventListener('mousedown',onClick);
+
+  // 手机上：手指按下去就算开枪，按下那点的位置当准星
+  window.addEventListener('touchstart',function(e){
+    const t=e.touches[0]; if(!t) return;
+    e.preventDefault();
+    onMove(t); onClick(t);
+  },{passive:false});
+  window.addEventListener('touchmove',function(e){
+    const t=e.touches[0]; if(!t) return;
+    e.preventDefault();
+    onMove(t);
+  },{passive:false});
+
+  quitBtn.addEventListener('click',function(){
+    quitBtn.classList.remove('on');
+    start();
+  });
   document.getElementById('go').addEventListener('click',start);
   raf=requestAnimationFrame(loop);
   updateHud();
