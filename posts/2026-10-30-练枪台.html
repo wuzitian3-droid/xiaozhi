@@ -48,7 +48,7 @@
       打完我告诉你：你偏哪边、慢多少。
     </div>
     <div class="rows"><span>目标数</span><b>40</b></div>
-    <div class="rows"><span>目标大小</span><b>26 px</b></div>
+    <div class="rows"><span>目标大小</span><b>电脑 26 · 手机 34 px</b></div>
     <div class="rows"><span>反应时间</span><b>1.5 秒内要打掉</b></div>
     <button id="go">开始</button>
   </div>
@@ -79,6 +79,8 @@
     cv.width=W*dpr;cv.height=H*dpr;
     cv.style.width=W+'px';cv.style.height=H+'px';
     ctx.setTransform(dpr,0,0,dpr,0,0);
+    // 手机上目标做大一点，手指点得准
+    R = W<560 ? 34 : 26;
   }
   fit();window.addEventListener('resize',fit);
 
@@ -103,7 +105,8 @@
   function sndEnd(){ tone(660,0.12,'sine',0.09); setTimeout(()=>tone(880,0.12,'sine',0.09),110);
                      setTimeout(()=>tone(1320,0.22,'sine',0.09),220); }
 
-  const TOTAL=40, LIFE=1500, R=26;
+  const TOTAL=40, LIFE=1500;
+  let R=26;
   let running=false, targets=[], parts=[], hits=0, shots=0, hitsOnTime=0,
       reactionSum=0, dxSum=0, dySum=0, leftCount=0, rightCount=0,
       upCount=0, downCount=0, spawnCount=0, lastTime=0,
@@ -282,6 +285,8 @@
   // 手机上：手指按下去就算开枪，按下那点的位置当准星
   window.addEventListener('touchstart',function(e){
     const t=e.touches[0]; if(!t) return;
+    // 手指落在按钮上就交给按钮，别把按钮的点击吃掉
+    if(e.target&&e.target.closest&&e.target.closest('button')) return;
     e.preventDefault();
     onMove(t); onClick(t);
   },{passive:false});
