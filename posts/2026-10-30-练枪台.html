@@ -72,7 +72,7 @@
   const panel=document.getElementById('panel');
   const card=document.getElementById('card');
   const quitBtn=document.getElementById('quit');
-  let W=0,H=0,dpr=1;
+  let W=0,H=0,dpr=1,R=26;
   function fit(){
     dpr=Math.min(window.devicePixelRatio||1,2);
     W=window.innerWidth;H=window.innerHeight;
@@ -106,7 +106,6 @@
                      setTimeout(()=>tone(1320,0.22,'sine',0.09),220); }
 
   const TOTAL=40, LIFE=1500;
-  let R=26;
   let running=false, targets=[], parts=[], hits=0, shots=0, hitsOnTime=0,
       reactionSum=0, dxSum=0, dySum=0, leftCount=0, rightCount=0,
       upCount=0, downCount=0, spawnCount=0, lastTime=0,
