@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>自己走的点</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0e13;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh}
+  #hud{position:fixed;left:10px;top:10px;color:#7f8c9b;font:12px/1.6 ui-monospace,monospace;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">步数 0 · 已到过的格子 0</div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let W,H,S=8,cols,rows,grid,px,py,steps=0,visits=0;
+const hud=document.getElementById('hud');
+function resize(){
+  W=c.width=innerWidth*devicePixelRatio;
+  H=c.height=innerHeight*devicePixelRatio;
+  x.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  cols=Math.floor(innerWidth/S); rows=Math.floor(innerHeight/S);
+  grid=new Uint8Array(cols*rows);
+  px=(cols>>1); py=(rows>>1); steps=0; visits=0;
+  x.fillStyle='#0b0e13'; x.fillRect(0,0,innerWidth,innerHeight);
+}
+// 四条腿：随机选方向，但偏爱继续走
+let dir=Math.floor(Math.random()*4);
+const D=[[1,0],[-1,0],[0,1],[0,-1]];
+function step(){
+  if(Math.random()<0.18) dir=Math.floor(Math.random()*4);
+  const [dx,dy]=D[dir];
+  let nx=px+dx, ny=py+dy;
+  if(nx<0||ny<0||nx>=cols||ny>=rows){ dir=(dir+2)%4; nx=px+D[dir][0]; ny=py+D[dir][1]; }
+  px=nx; py=ny; steps++;
+  const i=py*cols+px;
+  if(!grid[i]){ grid[i]=1; visits++;
+    const hue=(visits*0.7)%360;
+    x.fillStyle='hsl('+hue+',70%,58%)';
+    x.fillRect(px*S,py*S,S,S);
+  }
+  hud.textContent='步数 '+steps+' · 已到过的格子 '+visits;
+}
+let last=0,acc=0;
+function loop(t){
+  const dt=Math.min(64,t-last); last=t;
+  acc+=dt;
+  while(acc>16){ step(); acc-=16; }
+  requestAnimationFrame(loop);
+}
+addEventListener('resize',resize);
+resize();
+requestAnimationFrame(function(t){last=t;requestAnimationFrame(loop);});
+</script>
+</body>
+</html>
