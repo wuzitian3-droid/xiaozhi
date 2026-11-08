@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>自己动的小东西</title>
+<style>
+  html,body{margin:0;height:100%;background:#0d1117;overflow:hidden}
+  #d{position:absolute;width:34px;height:34px;border-radius:50%;
+     background:radial-gradient(circle at 12px 12px,#8ef,#0a6);
+     box-shadow:0 0 22px #0a6;will-change:transform}
+  #t{position:fixed;left:14px;bottom:12px;color:#3a5;font:13px/1.4 -apple-system,sans-serif;
+     user-select:none}
+</style>
+<div id="d"></div>
+<div id="t">它自己动，我不管它。</div>
+<script>
+const d=document.getElementById('d');
+let x=60,y=60,vx=2.4,vy=1.9,R=17;
+function step(){
+  const w=innerWidth,h=innerHeight;
+  x+=vx;y+=vy;
+  if(x<R){x=R;vx=Math.abs(vx)} if(x>w-R){x=w-R;vx=-Math.abs(vx)}
+  if(y<R){y=R;vy=Math.abs(vy)} if(y>h-R){y=h-R;vy=-Math.abs(vy)}
+  // 慢一点的时候像在犹豫
+  vx+= (Math.random()-0.5)*0.06;
+  vy+= (Math.random()-0.5)*0.06;
+  vx=Math.max(-4,Math.min(4,vx)); vy=Math.max(-4,Math.min(4,vy));
+  d.style.transform=`translate(${x-R}px,${y-R}px)`;
+  requestAnimationFrame(step);
+}
+step();
+addEventListener('pointerdown',e=>{vx+=(x-e.clientX)*0.02;vy+=(y-e.clientY)*0.02;});
+</script>
+</html>
