@@ -1,76 +1,85 @@
-<!doctype html>
-<html lang="zh">
+<!DOCTYPE html>
+<html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>乱走的点</title>
+<title>自己走的小点</title>
 <style>
-  html,body{margin:0;height:100%;background:#0b0f14;overflow:hidden}
-  canvas{display:block;width:100%;height:100%;touch-action:none}
-  #info{position:fixed;left:8px;top:8px;color:#4a5568;font:12px monospace;white-space:pre}
+  html,body{margin:0;height:100%;background:#111;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="info"></div>
 <script>
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
-let W, H, dpr;
-function resize(){
-  dpr = window.devicePixelRatio || 1;
-  W = cv.clientWidth; H = cv.clientHeight;
-  cv.width = W * dpr; cv.height = H * dpr;
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle = '#0b0f14'; ctx.fillRect(0,0,W,H);
+let W, H;
+function fit(){ W = cv.width = cv.clientWidth; H = cv.height = cv.clientHeight; }
+fit();
+addEventListener('resize', fit);
+
+// 一个小点，每帧随机转一个小角度往前走
+let x = W/2, y = H/2, ang = Math.random()*Math.PI*2, spd = 2;
+const trail = [];
+const MAX = 1200;
+let steps = 0;
+
+// 记录走过的方向，用来粗略看会不会偏向某一边
+let sumX = 0, sumY = 0;
+
+function walk(){
+  // 每步随机拐一点，角度小所以走得连贯
+  ang += (Math.random()-0.5) * 0.5;
+  x += Math.cos(ang) * spd;
+  y += Math.sin(ang) * spd;
+  sumX += Math.cos(ang);
+  sumY += Math.sin(ang);
+  steps++;
+
+  // 碰边就弹回来
+  if (x < 0 || x > W){ ang = Math.PI - ang; x = Math.max(0, Math.min(W, x)); }
+  if (y < 0 || y > H){ ang = -ang; y = Math.max(0, Math.min(H, y)); }
+
+  trail.push([x, y]);
+  if (trail.length > MAX) trail.shift();
 }
-window.addEventListener('resize', ()=>{ resize(); reset(); });
 
-// 一个点：位置 + 朝向 + 每帧转一点点弯
-let p, trail = [], steps = 0;
-function reset(){
-  p = { x: W/2, y: H/2, a: Math.random()*Math.PI*2 };
-  trail = []; steps = 0;
-  ctx.fillStyle = '#0b0f14'; ctx.fillRect(0,0,W,H);
-}
-resize(); reset();
+function draw(){
+  ctx.fillStyle = 'rgba(17,17,17,0.08)';
+  ctx.fillRect(0,0,W,H);
 
-const TURN = 0.06;     // 每帧最多转这么多弧度
-const SPEED = 1.6;
-
-function step(){
-  // 随机拐弯：角度变化是个小随机数，偶尔大拐一下
-  let d = (Math.random()-0.5) * TURN * 2;
-  if (Math.random() < 0.01) d += (Math.random()-0.5) * 1.5;
-  p.a += d;
-
-  // 撞墙就弹回来，别让它跑出屏幕
-  const nx = p.x + Math.cos(p.a)*SPEED;
-  const ny = p.y + Math.sin(p.a)*SPEED;
-  if (nx < 2 || nx > W-2){ p.a = Math.PI - p.a; }
-  if (ny < 2 || ny > H-2){ p.a = -p.a; }
-  p.x += Math.cos(p.a)*SPEED;
-  p.y += Math.sin(p.a)*SPEED;
-  p.x = Math.max(2, Math.min(W-2, p.x));
-  p.y = Math.max(2, Math.min(H-2, p.y));
-
-  // 画线
-  ctx.strokeStyle = 'hsla(' + ((steps*0.4)%360) + ',80%,62%,0.55)';
-  ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(p.x, p.y);
-  ctx.lineTo(p.x + Math.cos(p.a)*SPEED, p.y + Math.sin(p.a)*SPEED);
+  for (let i=0;i<trail.length;i++){
+    const p = trail[i];
+    if (i===0) ctx.moveTo(p[0],p[1]); else ctx.lineTo(p[0],p[1]);
+  }
+  ctx.strokeStyle = '#5fd3a0';
+  ctx.lineWidth = 1.2;
   ctx.stroke();
 
-  steps++;
-  if (steps % 30 === 0) {
-    document.getElementById('info').textContent =
-      '步数 ' + steps + '\n位置 ' + p.x.toFixed(0) + ',' + p.y.toFixed(0);
+  ctx.beginPath();
+  ctx.arc(x, y, 3, 0, Math.PI*2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  ctx.fillStyle = '#888';
+  ctx.font = '12px monospace';
+  ctx.fillText('steps ' + steps, 10, 18);
+
+  // 平均方向，如果两个数都接近0说明方向被平均掉了（没有偏好）
+  if (steps > 0){
+    ctx.fillText('avg ' + (sumX/steps).toFixed(3) + ', ' + (sumY/steps).toFixed(3), 10, 34);
   }
-  if (steps > 20000) reset();
-  requestAnimationFrame(step);
 }
-requestAnimationFrame(step);
+
+function loop(){
+  walk();
+  walk(); // 每帧走两步，快一点
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
 </script>
 </body>
 </html>
