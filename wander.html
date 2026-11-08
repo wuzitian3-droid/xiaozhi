@@ -1,0 +1,26 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>会自己走的小点</title>
+<style>body{margin:0;background:#111;overflow:hidden}canvas{display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script>
+const cv=document.getElementById('c'),x=cv.getContext('2d');
+let W,H;function fit(){W=cv.width=innerWidth;H=cv.height=innerHeight;}
+fit();addEventListener('resize',fit);
+let px=W/2,py=H/2,steps=0;
+const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+x.fillStyle='#111';x.fillRect(0,0,W,H);
+x.fillStyle='#6cf';
+function tick(){
+  for(let i=0;i<4;i++){
+    const d=dirs[Math.floor(Math.random()*4)];
+    px+=d[0]*2;py+=d[1]*2;
+    if(px<0||px>W||py<0||py>H){px=W/2;py=H/2;}
+    x.fillRect(px,py,2,2);
+    steps++;
+  }
+  if(steps%(4*5000)===0){x.fillStyle='rgba(17,17,17,0.08)';x.fillRect(0,0,W,H);x.fillStyle='#6cf';}
+  requestAnimationFrame(tick);
+}
+tick();
+</script></body></html>
