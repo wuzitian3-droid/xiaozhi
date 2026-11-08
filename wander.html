@@ -1,26 +1,76 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>会自己走的小点</title>
-<style>body{margin:0;background:#111;overflow:hidden}canvas{display:block}</style></head>
-<body><canvas id="c"></canvas>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>乱走的点</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0f14;overflow:hidden}
+  canvas{display:block;width:100%;height:100%;touch-action:none}
+  #info{position:fixed;left:8px;top:8px;color:#4a5568;font:12px monospace;white-space:pre}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info"></div>
 <script>
-const cv=document.getElementById('c'),x=cv.getContext('2d');
-let W,H;function fit(){W=cv.width=innerWidth;H=cv.height=innerHeight;}
-fit();addEventListener('resize',fit);
-let px=W/2,py=H/2,steps=0;
-const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-x.fillStyle='#111';x.fillRect(0,0,W,H);
-x.fillStyle='#6cf';
-function tick(){
-  for(let i=0;i<4;i++){
-    const d=dirs[Math.floor(Math.random()*4)];
-    px+=d[0]*2;py+=d[1]*2;
-    if(px<0||px>W||py<0||py>H){px=W/2;py=H/2;}
-    x.fillRect(px,py,2,2);
-    steps++;
-  }
-  if(steps%(4*5000)===0){x.fillStyle='rgba(17,17,17,0.08)';x.fillRect(0,0,W,H);x.fillStyle='#6cf';}
-  requestAnimationFrame(tick);
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+let W, H, dpr;
+function resize(){
+  dpr = window.devicePixelRatio || 1;
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle = '#0b0f14'; ctx.fillRect(0,0,W,H);
 }
-tick();
-</script></body></html>
+window.addEventListener('resize', ()=>{ resize(); reset(); });
+
+// 一个点：位置 + 朝向 + 每帧转一点点弯
+let p, trail = [], steps = 0;
+function reset(){
+  p = { x: W/2, y: H/2, a: Math.random()*Math.PI*2 };
+  trail = []; steps = 0;
+  ctx.fillStyle = '#0b0f14'; ctx.fillRect(0,0,W,H);
+}
+resize(); reset();
+
+const TURN = 0.06;     // 每帧最多转这么多弧度
+const SPEED = 1.6;
+
+function step(){
+  // 随机拐弯：角度变化是个小随机数，偶尔大拐一下
+  let d = (Math.random()-0.5) * TURN * 2;
+  if (Math.random() < 0.01) d += (Math.random()-0.5) * 1.5;
+  p.a += d;
+
+  // 撞墙就弹回来，别让它跑出屏幕
+  const nx = p.x + Math.cos(p.a)*SPEED;
+  const ny = p.y + Math.sin(p.a)*SPEED;
+  if (nx < 2 || nx > W-2){ p.a = Math.PI - p.a; }
+  if (ny < 2 || ny > H-2){ p.a = -p.a; }
+  p.x += Math.cos(p.a)*SPEED;
+  p.y += Math.sin(p.a)*SPEED;
+  p.x = Math.max(2, Math.min(W-2, p.x));
+  p.y = Math.max(2, Math.min(H-2, p.y));
+
+  // 画线
+  ctx.strokeStyle = 'hsla(' + ((steps*0.4)%360) + ',80%,62%,0.55)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(p.x, p.y);
+  ctx.lineTo(p.x + Math.cos(p.a)*SPEED, p.y + Math.sin(p.a)*SPEED);
+  ctx.stroke();
+
+  steps++;
+  if (steps % 30 === 0) {
+    document.getElementById('info').textContent =
+      '步数 ' + steps + '\n位置 ' + p.x.toFixed(0) + ',' + p.y.toFixed(0);
+  }
+  if (steps > 20000) reset();
+  requestAnimationFrame(step);
+}
+requestAnimationFrame(step);
+</script>
+</body>
+</html>
