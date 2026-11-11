@@ -135,7 +135,7 @@
     G.goAt = performance.now();
     G.dots = {t:dotIn('t'), b:dotIn('b')};
     if(G.mode==='ghost'){
-      var delay = 330 + Math.random()*300;
+      var delay = 275 + Math.random()*255;
       G.ghostTimer = setTimeout(function(){
         if(G.phase==='go') tap('b');
       }, delay);
@@ -169,9 +169,11 @@
     var t=G.score.t, b=G.score.b;
     var head, sub;
     if(G.mode==='ghost'){
-      if(b>t){ head='我赢啦'; sub='嘿嘿。'+t+' : '+b+'，下次我让你半只手。'; }
-      else if(t>b){ head='你赢'; sub=t+' : '+b+'。行吧，你手比我快，我认。'; }
-      else { head='平'; sub='一只手的距离。'; }
+      head = b>t ? '我赢啦' : (t>b ? '你赢' : '平');
+      sub = '我 ' + b + ' : 你 ' + t + '。';
+      if(b>t) sub += '嘿嘿，下次我让你半只手。';
+      else if(t>b) sub += '行吧，你手比我快，我认。';
+      else sub += '一只手的距离。';
     } else {
       head = '结算';
       sub = '上 ' + t + ' : ' + b + ' 下。谁赢了自己知道。';
