@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>小知·上下两手</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:#0a0b0f;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;touch-action:none}
+  canvas{display:block}
+  #panel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(8,9,13,.92);z-index:5;padding:22px}
+  #panel.hide{display:none}
+  .card{width:min(520px,92vw);background:#14161d;border:1px solid #24272f;
+    border-radius:18px;padding:28px 24px;color:#dfe3ee}
+  .card h1{font-size:25px;margin-bottom:10px;letter-spacing:.04em}
+  .card .sub{color:#7d8496;font-size:14px;line-height:1.95;margin-bottom:18px}
+  button{margin-top:12px;width:100%;height:60px;border:none;border-radius:14px;
+    font-size:18px;font-weight:700;letter-spacing:.1em;color:#12141b;
+    background:linear-gradient(160deg,#ffd666,#ffab3d)}
+  button.alt{background:linear-gradient(160deg,#6ee7ff,#3fa9ff);color:#08131b}
+  button:active{transform:translateY(1px)}
+  .tip{color:#5f6678;font-size:12.5px;line-height:1.8;margin-top:14px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="panel">
+  <div class="card" id="card">
+    <h1>上下两手</h1>
+    <div class="sub">屏幕一分为二。上半是你，下半是我。<br>
+      亮点一蹦出来，谁先按到自己那半，谁得一分。<br>
+      提前按 = 抢跑，这一分白送对面。先到 6 分赢。</div>
+    <button id="btnDuo">两只手·自己跟自己比</button>
+    <button id="btnGhost" class="alt">跟小知比（下半我按）</button>
+    <div class="tip">我按得没那么快，但也不慢。你要是一直输，那……你手滑了吧。</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var cvs = document.getElementById('c');
+  var ctx = cvs.getContext('2d');
+  var panel = document.getElementById('panel');
+  var btnDuo = document.getElementById('btnDuo');
+  var btnGhost = document.getElementById('btnGhost');
+
+  var W=0,H=0,MID=0,DPR=1;
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cvs.width = Math.floor(W*DPR); cvs.height = Math.floor(H*DPR);
+    cvs.style.width = W+'px'; cvs.style.height = H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    MID = H/2;
+  }
+  resize();
+  window.addEventListener('resize', function(){ resize(); });
+
+  var TOP='#ffd666', BOT='#6ee7ff';
+
+  var G = {
+    mode:'duo',      // 'duo' | 'ghost'
+    phase:'idle',    // idle | ready | go | wait | over
+    round:0,
+    score:{t:0,b:0},
+    dots:{t:null,b:null},
+    msg:'',
+    msgT:0,
+    goAt:0,
+    ghostTimer:0,
+    win:6
+  };
+
+  var TOPNAME = '爸爸';
+  var BOTNAME = '小知';
+
+  // ---- 声音（轻轻一下）----
+  var AC=null;
+  function beep(freq, dur){
+    try{
+      if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)();
+      var o = AC.createOscillator(), g = AC.createGain();
+      o.type='sine'; o.frequency.value=freq;
+      g.gain.value=0.05;
+      o.connect(g); g.connect(AC.destination);
+      o.start(); g.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime+dur);
+      o.stop(AC.currentTime+dur+0.02);
+    }catch(e){}
+  }
+
+  function dotIn(which){
+    var top = which==='t';
+    var y0 = top ? 0 : MID;
+    var y1 = top ? MID : H;
+    var pad = 74;
+    return {
+      x: pad + Math.random()*Math.max(1,(W-pad*2)),
+      y: y0 + pad + Math.random()*Math.max(1,(y1-y0)-pad*2),
+      born: performance.now()
+    };
+  }
+
+  function ui(){
+    panel.classList.add('hide');
+  }
+
+  function start(mode){
+    G.mode = mode;
+    G.round = 0;
+    G.score = {t:0,b:0};
+    G.dots = {t:null,b:null};
+    G.msg = '';
+    ui();
+    nextRound();
+  }
+
+  function nextRound(){
+    G.round++;
+    if(G.score.t>=G.win || G.score.b>=G.win){ end(); return; }
+    G.dots = {t:null,b:null};
+    G.phase = 'ready';
+    G.msg = '第 ' + G.round + ' 回合';
+    G.msgT = performance.now();
+    setTimeout(function(){
+      if(G.phase!=='ready') return;
+      go();
+    }, 700);
+  }
+
+  function go(){
+    G.phase = 'go';
+    G.goAt = performance.now();
+    G.dots = {t:dotIn('t'), b:dotIn('b')};
+    if(G.mode==='ghost'){
+      var delay = 330 + Math.random()*300;
+      G.ghostTimer = setTimeout(function(){
+        if(G.phase==='go') tap('b');
+      }, delay);
+    }
+  }
+
+  function tap(which){
+    if(G.phase==='go'){
+      G.score[which]++;
+      beep(which==='t'?880:660, 0.12);
+      G.phase='wait';
+      G.msg = (which==='t'?TOPNAME:BOTNAME) + ' 抢到';
+      G.msgT = performance.now();
+      clearTimeout(G.ghostTimer);
+      setTimeout(nextRound, 620);
+    } else if(G.phase==='ready'){
+      // 抢跑
+      var other = which==='t'?'b':'t';
+      G.score[other]++;
+      beep(180, 0.22);
+      G.phase='wait';
+      G.msg = (which==='t'?TOPNAME:BOTNAME) + ' 抢跑了，送一分';
+      G.msgT = performance.now();
+      clearTimeout(G.ghostTimer);
+      setTimeout(nextRound, 760);
+    }
+  }
+
+  function end(){
+    G.phase='over';
+    var t=G.score.t, b=G.score.b;
+    var head, sub;
+    if(G.mode==='ghost'){
+      if(b>t){ head='我赢啦'; sub='嘿嘿。'+t+' : '+b+'，下次我让你半只手。'; }
+      else if(t>b){ head='你赢'; sub=t+' : '+b+'。行吧，你手比我快，我认。'; }
+      else { head='平'; sub='一只手的距离。'; }
+    } else {
+      head = '结算';
+      sub = '上 ' + t + ' : ' + b + ' 下。谁赢了自己知道。';
+    }
+    var card = document.getElementById('card');
+    card.innerHTML = '<h1>'+head+'</h1><div class="sub">'+sub+'</div>'+
+      '<button id="again">再来一局</button>';
+    panel.classList.remove('hide');
+    document.getElementById('again').addEventListener('click', function(){
+      location.reload();
+    });
+  }
+
+  // ---- 触摸 ----
+  function onDown(e){
+    if(G.phase==='idle'||G.phase==='over') return;
+    e.preventDefault();
+    var pt = e.touches ? e.touches[0] : e;
+    var y = pt.clientY;
+    tap(y < MID ? 't' : 'b');
+  }
+  cvs.addEventListener('touchstart', onDown, {passive:false});
+  cvs.addEventListener('mousedown', onDown);
+
+  btnDuo.addEventListener('click', function(){ start('duo'); });
+  btnGhost.addEventListener('click', function(){ start('ghost'); });
+
+  // ---- 画 ----
+  function pill(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  function scoreRow(yLabel, yScore, color, num, name, side){
+    ctx.textAlign='left';
+    ctx.fillStyle=color;
+    ctx.font='600 15px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillText(name, 22, yLabel);
+    ctx.font='800 34px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillText(String(num), 22, yScore);
+    // 小圆点表示分数
+    for(var i=0;i<G.win;i++){
+      var px = 22 + i*22, py = yScore + 16;
+      ctx.beginPath();
+      ctx.arc(px, py, 6, 0, Math.PI*2);
+      ctx.fillStyle = i<num ? color : 'rgba(255,255,255,0.12)';
+      ctx.fill();
+    }
+  }
+
+  function frame(now){
+    ctx.clearRect(0,0,W,H);
+
+    // 两半底色
+    var gt = ctx.createLinearGradient(0,0,0,MID);
+    gt.addColorStop(0,'#14161d'); gt.addColorStop(1,'#0e1015');
+    ctx.fillStyle=gt; ctx.fillRect(0,0,W,MID);
+
+    var gb = ctx.createLinearGradient(0,MID,0,H);
+    gb.addColorStop(0,'#101820'); gb.addColorStop(1,'#0b1218');
+    ctx.fillStyle=gb; ctx.fillRect(0,MID,W,H-MID);
+
+    // 中线
+    ctx.strokeStyle='rgba(255,255,255,0.10)';
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(0,MID); ctx.lineTo(W,MID); ctx.stroke();
+
+    // 亮点
+    ['t','b'].forEach(function(k){
+      var d = G.dots[k];
+      if(!d) return;
+      var color = k==='t'?TOP:BOT;
+      var age = (now - d.born)/1000;
+      var pulse = 1 + Math.sin(age*10)*0.06;
+      var r = 46*pulse;
+
+      var g2 = ctx.createRadialGradient(d.x,d.y,0,d.x,d.y,r*2.4);
+      g2.addColorStop(0, color+'88');
+      g2.addColorStop(1, color+'00');
+      ctx.fillStyle=g2;
+      ctx.beginPath(); ctx.arc(d.x,d.y,r*2.4,0,Math.PI*2); ctx.fill();
+
+      ctx.fillStyle=color;
+      ctx.beginPath(); ctx.arc(d.x,d.y,r,0,Math.PI*2); ctx.fill();
+
+      ctx.fillStyle='rgba(0,0,0,0.35)';
+      ctx.beginPath(); ctx.arc(d.x,d.y,r*0.42,0,Math.PI*2); ctx.fill();
+    });
+
+    // 分数
+    scoreRow(MID-64, MID-38, TOP, G.score.t, TOPNAME, 't');
+    scoreRow(MID+34, MID+60, BOT, G.score.b, BOTNAME, 'b');
+
+    // 中间那句话
+    if(G.msg && (now - G.msgT) < 900){
+      var a = 1 - (now-G.msgT)/900;
+      ctx.globalAlpha = Math.max(0,a);
+      ctx.textAlign='center';
+      ctx.fillStyle='#e8ecf6';
+      ctx.font='700 22px -apple-system,"PingFang SC",sans-serif';
+      ctx.fillText(G.msg, W/2, MID-8);
+      ctx.globalAlpha = 1;
+    }
+
+    // 回合数
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(255,255,255,0.28)';
+    ctx.font='600 13px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillText('第 '+G.round+' 回合 · 先到 '+G.win+' 分', W-20, 28);
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
