@@ -152,15 +152,14 @@
       clearTimeout(G.ghostTimer);
       setTimeout(nextRound, 620);
     } else if(G.phase==='ready'){
-      // 抢跑
-      var other = which==='t'?'b':'t';
-      G.score[other]++;
+      // 抢跑：这一回合不算，重来（不给对面白送分）
       beep(180, 0.22);
       G.phase='wait';
-      G.msg = (which==='t'?TOPNAME:BOTNAME) + ' 抢跑了，送一分';
+      G.round--;                       // 回合数不涨
+      G.msg = '抢跑啦，这回合不算';
       G.msgT = performance.now();
       clearTimeout(G.ghostTimer);
-      setTimeout(nextRound, 760);
+      setTimeout(nextRound, 620);
     }
   }
 
