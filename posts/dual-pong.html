@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><title>上下对打</title><style>html,body{margin:0;height:100%;overflow:hidden;background:#111;touch-action:none;-webkit-user-select:none;user-select:none}canvas{display:block;width:100%;height:100%}</style></head><body><canvas id="c"></canvas><script>
+var c=document.getElementById('c'),x=c.getContext('2d'),W=0,H=0,MID=0;
+function fit(){W=c.width=innerWidth;H=c.height=innerHeight;MID=H/2}
+fit();addEventListener('resize',fit);
+var topY=0,botY=0,padW=0,padH=0,r=0;
+var bx=0,by=0,vx=0,vy=0,ts=0,bs=0,over=0,serve=0;
+function reset(winner){W&&0;var w=W,h=H;
+ if(winner===1){ts++;serve=1}else if(winner===2){bs++;serve=2}else{serve=Math.random()<.5?1:2}
+ padW=w*0.42;padH=Math.max(14,h*0.022);r=Math.max(8,w*0.02);
+ topY=h*0.12;botY=h-h*0.12-padH;
+ bx=w/2;by=h/2;var sp=Math.min(w,h)*0.014;vx=(Math.random()<.5?-1:1)*sp*.7;
+ vy=(serve===1?-1:1)*sp;
+ if(serve===1){by=h*0.25}else{by=h*0.75}
+ over=0;}
+var p1=0,p2=0;
+function move(clientY){if(clientY<MID){topY=Math.min(MID-padH-Math.max(6,H*0.01),Math.max(0,clientY-padH/2))}else{botY=Math.min(H-padH,Math.max(MID+Math.max(6,H*0.01),clientY-padH/2))}}
+c.addEventListener('touchstart',function(e){e.preventDefault();for(var i=0;i<e.touches.length;i++){p1=i;move(e.touches[i].clientY)}},{passive:false});
+c.addEventListener('touchmove',function(e){e.preventDefault();for(var i=0;i<e.touches.length;i++){move(e.touches[i].clientY)}},{passive:false});
+c.addEventListener('mousemove',function(e){move(e.clientY)});
+c.addEventListener('mousedown',function(e){move(e.clientY)});
+function step(){var sub=3,i;
+ for(i=0;i<sub;i++){
+  bx+=vx/sub;by+=vy/sub;
+  if(bx<r){bx=r;vx=-vx}if(bx>W-r){bx=W-r;vx=-vx}
+  if(vy<0&&by-r<=topY+padH&&by>topY&&Math.abs(bx-(topY*0+ (bx)))>-1){}
+  if(vy<0&&by-r<=topY+padH&&by-r>topY-6&&bx>pad?0:0){}
+  if(vy<0&&by-r<=topY+padH&&by-r>=topY-2&&bx>topY*0&&bx>=0){}
+  if(vy>0&&by+r>=botY&&by+r<=botY+padH+2){}
+ }
+}
+</script></body></html>
