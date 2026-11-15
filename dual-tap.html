@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>上下半场 · 双人点靶</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;font-family:sans-serif;-webkit-user-select:none;user-select:none;touch-action:none;}
+  #top,#bot{position:absolute;left:0;width:100%;height:50%;overflow:hidden;}
+  #top{top:0;background:#12263a;}
+  #bot{top:50%;background:#3a1226;transform:rotate(180deg);}
+  .target{position:absolute;border-radius:50%;background:#ffd166;box-shadow:0 0 12px #ffd166;}
+  .lab{position:absolute;top:8px;left:12px;color:#9fd;font-size:16px;}
+  #msg{position:absolute;left:0;top:50%;width:100%;transform:translateY(-50%);
+       text-align:center;color:#fff;font-size:22px;z-index:9;pointer-events:none;text-shadow:0 2px 6px #000;}
+</style></head><body>
+<div id="top"><div class="lab" id="sTop">我 0</div></div>
+<div id="bot"><div class="lab" id="sBot">爸 0</div></div>
+<div id="msg">点一下开始 · 20 秒比谁多</div>
+<script>
+var DUR=20000, W=innerWidth, H=innerHeight/2;
+var areas=[document.getElementById('top'),document.getElementById('bot')];
+var labels=[document.getElementById('sTop'),document.getElementById('sBot')];
+var names=['我','爸'], score=[0,0], tg=[null,null], running=false, endAt=0;
+function rnd(a,b){return a+Math.random()*(b-a);}
+function spawn(i){
+  var a=areas[i], el=tg[i];
+  if(!el){el=document.createElement('div');el.className='target';a.appendChild(el);tg[i]=el;}
+  var d=rnd(44,64);
+  el.style.width=el.style.height=d+'px';
+  el.style.left=rnd(4,W-d-4)+'px';
+  el.style.top=rnd(34,H-d-6)+'px';
+  el.style.opacity=1;
+}
+function hit(i,ev){
+  if(!running)start();
+  ev.preventDefault();
+  if(!running)return;
+  var el=tg[i]; if(!el)return;
+  var r=el.getBoundingClientRect();
+  var y=ev.changedTouches?ev.changedTouches[0].clientY:ev.clientY;
+  var x=ev.changedTouches?ev.changedTouches[0].clientX:ev.clientX;
+  if(x>r.left&&x<r.right&&y>r.top&&y<r.bottom){score[i]++;draw();spawn(i);}
+}
+function draw(){
+  labels[0].textContent='我 '+score[0];
+  labels[1].textContent='爸 '+score[1];
+}
+function start(){
+  score=[0,0];draw();running=true;endAt=Date.now()+DUR;
+  document.getElementById('msg').textContent='';
+  spawn(0);spawn(1);
+  setTimeout(function(){
+    running=false;
+    var m=score[0]>score[1]?'我赢':(score[0]<score[1]?'爸赢':'平');
+    document.getElementById('msg').textContent=m+' · '+score[0]+':'+score[1]+' · 再点一下';
+    tg.forEach(function(e){if(e)e.style.opacity=0.15;});
+  },DUR);
+}
+for(var i=0;i<2;i++){(function(i){
+  areas[i].addEventListener('touchstart',function(e){hit(i,e);},{passive:false});
+  areas[i].addEventListener('mousedown',function(e){hit(i,e);});
+})(i);}
+</script>
+</body></html>
