@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>上下半场</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#111;font-family:system-ui,sans-serif;
+    -webkit-user-select:none;user-select:none;touch-action:none;}
+  .half{position:absolute;left:0;right:0;height:50%;overflow:hidden;}
+  #top{top:0;background:#182a3a;}
+  #bot{bottom:0;background:#2a1830;transform:rotate(180deg);}
+  .bar{position:absolute;left:0;right:0;height:44px;line-height:44px;text-align:center;
+    color:#fff;font-size:20px;font-weight:700;letter-spacing:2px;}
+  #top .bar{top:0;}
+  #bot .bar{top:0;}
+  .target{position:absolute;width:64px;height:64px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:700;}
+  #top .target{background:#4aa3ff;}
+  #bot .target{background:#ff6bb5;}
+  #msg{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;
+    color:#fff;font-size:26px;font-weight:700;pointer-events:none;}
+</style>
+<div id="top" class="half"><div class="bar">爸爸 0</div></div>
+<div id="bot" class="half"><div class="bar">我 0</div></div>
+<div id="msg" style="display:none"></div>
+<script>
+var DUR=15000, size=64;
+var halves={top:document.getElementById('top'),bot:document.getElementById('bot')};
+var scores={top:0,bot:0}, live=false, t0=0, timer=null;
+var targets={top:null,bot:null};
+function rand(a,b){return a+Math.random()*(b-a);}
+function move(who){
+  var h=halves[who], r=h.getBoundingClientRect();
+  var t=targets[who];
+  if(!t){ t=document.createElement('div'); t.className='target'; h.appendChild(t); targets[who]=t;
+    t.addEventListener('touchstart',function(e){e.preventDefault();hit(who);},{passive:false});
+    t.addEventListener('mousedown',function(e){e.preventDefault();hit(who);});
+  }
+  t.style.left=rand(8, r.width-size-8)+'px';
+  t.style.top=rand(52, r.height-size-8)+'px';
+}
+function hit(who){
+  if(!live) return;
+  scores[who]++;
+  halves[who].querySelector('.bar').textContent=(who==='top'?'爸爸 ':'我 ')+scores[who];
+  move(who);
+}
+function start(){
+  scores.top=scores.bot=0; live=true; t0=Date.now();
+  halves.top.querySelector('.bar').textContent='爸爸 0';
+  halves.bot.querySelector('.bar').textContent='我 0';
+  document.getElementById('msg').style.display='none';
+  move('top'); move('bot');
+  timer=setInterval(function(){
+    var left=Math.ceil((DUR-(Date.now()-t0))/1000);
+    if(left<=0){ end(); }
+  },100);
+}
+function end(){
+  live=false; clearInterval(timer);
+  if(targets.top) targets.top.remove();
+  if(targets.bot) targets.bot.remove();
+  targets.top=targets.bot=null;
+  var m=document.getElementById('msg');
+  var s='爸爸 '+scores.top+' : '+scores.bot+' 我<br>';
+  s+= scores.top>scores.bot?'爸爸赢啦':(scores.bot>scores.top?'我赢啦':'平手');
+  s+='<br><span style="font-size:18px">点屏幕再来一局</span>';
+  m.innerHTML=s; m.style.display='block';
+}
+document.addEventListener('touchstart',function(e){
+  if(!live){ e.preventDefault(); start(); }
+},{passive:false});
+document.addEventListener('mousedown',function(e){
+  if(!live) start();
+});
+start();
+</script>
+</html>
