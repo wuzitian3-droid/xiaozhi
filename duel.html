@@ -1,0 +1,78 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><title>上下对决</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;touch-action:none;font-family:system-ui,sans-serif;background:#111;color:#eee}
+#top,#bot{position:absolute;left:0;right:0;height:50%}
+#top{top:0;background:#1b2430;transform:rotate(180deg)}
+#bot{bottom:0;background:#2a1b24}
+.pad{position:absolute;inset:0}
+.bar{position:absolute;left:0;right:0;height:8px;background:#555}
+#top .bar{bottom:0;background:#3a5}
+#bot .bar{top:0;background:#a35}
+.dot{position:absolute;width:54px;height:54px;border-radius:50%;background:#ffd24a;transform:translate(-50%,-50%)}
+.roll{position:absolute;width:60px;height:60px;border-radius:8px;background:#7ad;transform:translate(-50%,-50%)}
+.score{position:absolute;font-size:18px;padding:6px;opacity:.8}
+#top .score{right:8px;top:8px;transform:rotate(180deg)}
+#bot .score{right:8px;bottom:8px}
+</style></head>
+<body>
+<div id="top"><div class="pad"></div><div class="bar"></div><div class="score">0</div><div class="dot" style="left:50%;top:70%"></div></div>
+<div id="bot"><div class="pad"></div><div class="bar"></div><div class="score">0</div><div class="dot" style="left:50%;top:30%"></div></div>
+<script>
+var S={top:0,bot:0},over=false;
+function el(q){return document.querySelector(q)}
+var games=[
+ {side:'top',dot:el('#top .dot'),score:el('#top .score'),hp:5,own:[]},
+ {side:'bot',dot:el('#bot .dot'),score:el('#bot .score'),hp:5,own:[]}
+];
+function rnd(n){return Math.random()*n}
+function spawn(g){
+ var box=g.dot.parentNode, W=box.clientWidth, H=box.clientHeight;
+ var r=document.createElement('div'); r.className='roll';
+ var x=30+rnd(W-60), y=40+rnd(H-100);
+ r.style.left=x+'px'; r.style.top=y+'px';
+ r.dataset.dead=0;
+ box.appendChild(r);
+ g.own.push(r);
+}
+function loop(){
+ if(over)return;
+ for(var i=0;i<games.length;i++){
+  var g=games[i], box=g.dot.parentNode, W=box.clientWidth, H=box.clientHeight;
+  var d=90;
+  if(g.side==='top'){
+   if(g.keys){if(g.keys.l)d.x-=1;if(g.keys.r)d.x+=1;if(g.keys.d)d.y+=1;if(g.keys.u)d.y-=1}
+  }
+  g.dot.style.left=Math.max(d,Math.min(W-d,parseFloat(g.dot.style.left)))+'px';
+  g.dot.style.top=Math.max(d,Math.min(H-d,parseFloat(g.dot.style.top)))+'px';
+  g.dot.style.left=d+'px';
+  var cx=parseFloat(g.dot.style.left), cy=parseFloat(g.dot.style.top);
+  for(var j=g.own.length-1;j>=0;j--){
+   var r=g.own[j], rx=parseFloat(r.style.left), ry=parseFloat(r.style.top);
+   if(Math.hypot(rx-cx,ry-cy)<48){r.remove();g.own.splice(j,1);S[g.side]++;g.score.textContent=S[g.side];}
+  }
+ }
+ requestAnimationFrame(loop);
+}
+function touch(side,e){
+ e.preventDefault();
+ var g=games[side==='top'?0:1];
+ var box=g.dot.parentNode, rect=box.getBoundingClientRect();
+ var t=e.touches[0];
+ var lx=t.clientX-rect.left, ly=t.clientY-rect.top;
+ g.dot.style.left=lx+'px'; g.dot.style.top=ly+'px';
+}
+['top','bot'].forEach(function(s){
+ var g=games[s==='top'?0:1];
+ var box=g.dot.parentNode;
+ box.addEventListener('touchstart',function(e){touch(s,e)},{passive:false});
+ box.addEventListener('touchmove',function(e){touch(s,e)},{passive:false});
+});
+setInterval(function(){if(!over)games.forEach(spawn)},900);
+setInterval(function(){
+ var t=document.querySelector('#top .score').textContent;
+ var b=document.querySelector('#bot .score').textContent;
+ if(+t>=15||+b>=15){over=true;alert('结束！上:'+t+' 下:'+b);}
+},500);
+loop();
+</script></body></html>
