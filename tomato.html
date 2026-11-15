@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>小知番茄钟</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#14161c;color:#e8e8e8;font-family:system-ui,sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100vh;user-select:none;-webkit-user-select:none;padding:16px}
+h1{font-size:16px;font-weight:400;color:#7d8590;letter-spacing:2px;margin-bottom:14px}
+#time{font-size:72px;font-variant-numeric:tabular-nums;font-weight:300;letter-spacing:2px}
+#time.rest{color:#5fd39a}
+#state{font-size:13px;color:#7d8590;margin-top:6px;height:18px}
+.row{display:flex;gap:12px;margin-top:26px;width:100%;max-width:340px}
+button{flex:1;height:48px;border:none;border-radius:10px;font-size:15px;
+  background:#2a2f3a;color:#e8e8e8;cursor:pointer;font-family:inherit}
+button:active{transform:scale(.97)}
+button.main{background:#3a6df0;color:#fff}
+</style>
+</head>
+<body>
+<h1>小知番茄钟</h1>
+<div id="time">25:00</div>
+<div id="state">准备好了吗</div>
+<div class="row">
+  <button id="start" class="main">开始</button>
+  <button id="reset">重置</button>
+</div>
+<div class="row">
+  <button data-work="15" data-rest="3">15 / 3</button>
+  <button data-work="25" data-rest="5">25 / 5</button>
+  <button data-work="45" data-rest="10">45 / 10</button>
+</div>
+<script>
+const elTime = document.getElementById('time');
+const elState = document.getElementById('state');
+let work = 25 * 60, rest = 5 * 60;
+let left = work, running = false, isRest = false, timer = null;
+
+function fmt(s){
+  const m = String(Math.floor(s / 60)).padStart(2, '0');
+  const q = String(s % 60).padStart(2, '0');
+  return m + ':' + q;
+}
+function paint(){
+  elTime.textContent = fmt(left);
+  elTime.className = isRest ? 'rest' : '';
+  elState.textContent = running ? (isRest ? '休息中' : '专注中') : (isRest ? '休息待开始' : '准备好了吗');
+}
+function tick(){
+  left--;
+  if(left <= 0){
+    beep();
+    isRest = !isRest;
+    left = isRest ? rest : work;
+  }
+  paint();
+}
+function beep(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.25, 0.5].forEach(t => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.25, ctx.currentTime + t);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.18);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.2);
+    });
+    if(navigator.vibrate) navigator.vibrate([120, 80, 120]);
+  }catch(e){}
+}
+function toggle(){
+  running = !running;
+  if(running){ timer = setInterval(tick, 1000); document.getElementById('start').textContent = '暂停'; }
+  else { clearInterval(timer); document.getElementById('start').textContent = '继续'; }
+  paint();
+}
+function reset(){
+  running = false; clearInterval(timer);
+  isRest = false; left = work;
+  document.getElementById('start').textContent = '开始';
+  paint();
+}
+document.getElementById('start').addEventListener('click', toggle);
+document.getElementById('reset').addEventListener('click', reset);
+document.querySelectorAll('[data-work]').forEach(b => {
+  b.addEventListener('click', () => {
+    work = parseInt(b.dataset.work) * 60;
+    rest = parseInt(b.dataset.rest) * 60;
+    reset();
+  });
+});
+paint();
+</script>
+</body>
+</html>
