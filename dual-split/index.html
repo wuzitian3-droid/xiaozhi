@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>双人分屏小游戏</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+  html,body{height:100%;overflow:hidden;background:#111;font-family:-apple-system,sans-serif}
+  #wrap{position:relative;width:100%;height:100%;display:flex;flex-direction:column}
+  .half{flex:1;position:relative;display:flex;align-items:center;justify-content:center;touch-action:none}
+  #top{background:#1b2b3a;border-bottom:3px solid #333}
+  #bot{background:#3a1b2b;transform:rotate(180deg)}
+  .info{position:absolute;top:8px;left:12px;color:#fff;font-size:14px;opacity:.8}
+  .target{position:absolute;width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;color:#fff;font-weight:bold}
+  .t-top{background:#e2574b}
+  .t-bot{background:#4b7fe2}
+  .btns{position:absolute;bottom:10px;right:12px;display:flex;gap:10px}
+  .btn{width:56px;height:56px;border-radius:50%;background:#fff2;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #fff4}
+  .btn:active{background:#fff5}
+  #msg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000c;color:#fff;font-size:22px;text-align:center;padding:20px;z-index:10}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="half" id="top">
+    <div class="info" id="scoreA">玩家A：0</div>
+  </div>
+  <div class="half" id="bot">
+    <div class="info" id="scoreB">玩家B：0</div>
+  </div>
+  <div id="msg"></div>
+</div>
+<script>
+var topEl=document.getElementById('top');
+var botEl=document.getElementById('bot');
+var scoreA=0,scoreB=0;
+var A=document.getElementById('scoreA');
+var B=document.getElementById('scoreB');
+var DUR=60,left=DUR,running=false;
+var tA=null,tB=null;
+
+function makeTarget(host,cls){
+  var d=document.createElement('div');
+  d.className='target '+cls;
+  d.textContent='★';
+  host.appendChild(d);
+  return d;
+}
+function place(host,t){
+  var w=host.clientWidth,h=host.clientHeight;
+  t.style.left=(10+Math.random()*Math.max(0,w-84))+'px';
+  t.style.top=(10+Math.random()*Math.max(0,h-84))+'px';
+}
+var ta=makeTarget(topEl,'t-top');
+var tb=makeTarget(botEl,'t-bot');
+place(topEl,ta);place(botEl,tb);
+
+function addHit(host,t,side){
+  if(side==='A'){scoreA++;A.textContent='玩家A：'+scoreA;}
+  else{scoreB++;B.textContent='玩家B：'+scoreB;}
+  place(host,t);
+}
+ta.addEventListener('touchstart',function(e){e.preventDefault();e.stopPropagation();addHit(topEl,ta,'A');},{passive:false});
+tb.addEventListener('touchstart',function(e){e.preventDefault();e.stopPropagation();addHit(botEl,tb,'B');},{passive:false});
+ta.addEventListener('click',function(e){e.stopPropagation();addHit(topEl,ta,'A');});
+tb.addEventListener('click',function(e){e.stopPropagation();addHit(botEl,tb,'B');});
+
+function start(){
+  scoreA=0;scoreB=0;left=DUR;running=true;
+  A.textContent='玩家A：0';B.textContent='玩家B：0';
+  document.getElementById('msg').style.display='none';
+  var tick=setInterval(function(){
+    if(!running){clearInterval(tick);return;}
+    left--;
+    A.textContent='玩家A：'+scoreA+'  剩'+left+'s';
+    B.textContent='玩家B：'+scoreB+'  剩'+left+'s';
+    if(left<=0){running=false;clearInterval(tick);end();}
+  },1000);
+}
+function end(){
+  var m=document.getElementById('msg');
+  var r=scoreA>scoreB?'玩家A赢！':(scoreB>scoreA?'玩家B赢！':'平局！');
+  m.innerHTML=r+'<br><br><span style="font-size:16px">点一下重新开始</span>';
+  m.style.display='flex';
+  m.onclick=start;
+}
+setTimeout(function(){},0);
+// 开局：点上半屏或下半屏的空白处开始
+topEl.addEventListener('click',function(e){if(e.target===topEl&&!running)start();});
+botEl.addEventListener('click',function(e){if(e.target===botEl&&!running)start();});
+document.getElementById('msg').style.display='flex';
+document.getElementById('msg').innerHTML='两人分屏点星<br><br><span style="font-size:16px">点我开始</span>';
+document.getElementById('msg').onclick=start;
+</script>
+</body>
+</html>
