@@ -135,7 +135,7 @@
   function jump(p, dir, power){
     if(p.dead || !p.onGround) return;
     p.onGround=false; p.jumping=true;
-    p.vy = -(430 + power*430);
+    p.vy = 430 + power*430;
     p.vx = dir * MOVE * (0.5 + power*0.7);
     p.facing = dir || p.facing;
   }
@@ -156,7 +156,7 @@
     q.hurt = 0.24;
     q.x += dir * knock;
     q.x = Math.max(BODY*0.45, Math.min(W-BODY*0.45, q.x));
-    if(q.hp <= 0){ q.hp = 0; q.dead = true; q.vx = dir*120; q.vy = -260; }
+    if(q.hp <= 0){ q.hp = 0; q.dead = true; q.vx = dir*120; q.vy = 260; q.onGround=false; }
   }
 
   // ---------- 输入：按住走，早松挥刀，长按蓄力跳 ----------
@@ -246,20 +246,16 @@
         if(p.hurt>0) p.hurt -= dt;
 
         if(!p.onGround){
-          p.vy += 1650*dt;
-          p.y -= p.vy*dt;          // y = 离地高度（负数向上）
+          p.vy -= 1650*dt;
+          p.y += p.vy*dt;
           p.x += p.vx*dt;
           p.x = Math.max(BODY*0.45, Math.min(W-BODY*0.45, p.x));
-          if(p.y >= 0){ p.y = 0; land(p); }
+          if(p.y <= 0){ p.y = 0; p.vy = 0; if(!p.dead) land(p); else p.onGround = true; }
         }
 
-        if(p.dead && !p.onGround){
-          p.vy += 1650*dt;
-          p.y -= p.vy*dt;
-          if(p.y >= 0){ p.y = 0; p.vy=0; p.onGround=true; }
-        } else if(p.dead){
+        if(p.dead && p.onGround){
           p.x += p.vx*dt; p.vx *= 0.9;
-        } else if(!p.isPlayer && p.onGround){
+        } else if(!p.dead && !p.isPlayer && p.onGround){
           aiStep(p, dt);
         }
       });
@@ -291,7 +287,7 @@
     var y = baseY + bob;
 
     // 影子
-    var sh = 1 - Math.min(0.7, (-p.y)/(BODY*2.4));
+    var sh = 1 - Math.min(0.7, (p.y)/(BODY*2.4));
     ctx.fillStyle = 'rgba(0,0,0,'+(0.38*sh)+')';
     ctx.beginPath(); ctx.ellipse(p.x, GROUND+BODY*0.46, w*0.42*sh, 12*sh, 0, 0, Math.PI*2); ctx.fill();
 
