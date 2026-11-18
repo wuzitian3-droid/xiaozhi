@@ -6,11 +6,11 @@
 <title>寿司大乱斗</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%;overflow:hidden;background:#120e0c;touch-action:none;
+  html,body{height:100%;overflow:hidden;background:#0e0b09;touch-action:none;
     font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
   canvas{display:block}
   #panel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    background:rgba(10,7,6,.93);z-index:5;padding:22px}
+    background:rgba(10,7,6,.94);z-index:5;padding:22px}
   #panel.hide{display:none}
   .card{width:min(520px,92vw);background:#1c1512;border:1px solid #33261f;
     border-radius:18px;padding:26px 24px;color:#f0e5da}
@@ -20,38 +20,30 @@
     letter-spacing:.1em;color:#1a1206;background:linear-gradient(160deg,#ffd27a,#ff9c3d)}
   button:active{transform:translateY(1px)}
   .tip{color:#6d5c50;font-size:12.5px;line-height:1.8;margin-top:14px}
-  #pad{position:fixed;inset:auto 0 0 0;height:26vh;display:flex;align-items:flex-end;
-    justify-content:space-between;padding:0 16px 18px;z-index:4;pointer-events:none}
-  #pad .side{display:flex;gap:14px;pointer-events:auto}
-  .kbtn{width:96px;height:96px;border-radius:50%;border:2px solid rgba(255,255,255,.18);
-    background:rgba(255,255,255,.07);color:#f4e9de;font-size:30px;display:flex;
-    align-items:center;justify-content:center;backdrop-filter:blur(3px)}
-  #btnHit{width:118px;height:118px;font-size:22px;font-weight:800;letter-spacing:.08em;
-    background:rgba(255,140,90,.22);border-color:rgba(255,140,90,.5);color:#ffd9c6}
-  .kbtn.on{background:rgba(255,255,255,.2)}
+  #pad{position:fixed;left:0;right:0;bottom:0;height:30vh;display:flex;align-items:flex-end;
+    justify-content:space-between;padding:0 18px 22px;z-index:4;pointer-events:none}
+  .kbtn{width:104px;height:104px;border-radius:50%;border:2px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.07);color:#f4e9de;font-size:34px;display:flex;
+    align-items:center;justify-content:center;backdrop-filter:blur(3px);pointer-events:auto}
+  .kbtn.on{background:rgba(255,210,120,.3);border-color:rgba(255,210,120,.6)}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 
 <div id="pad">
-  <div class="side">
-    <div class="kbtn" id="btnL">◀</div>
-    <div class="kbtn" id="btnR">▶</div>
-  </div>
-  <div class="side">
-    <div class="kbtn" id="btnHit">砍</div>
-  </div>
+  <div class="kbtn" id="btnL">◀</div>
+  <div class="kbtn" id="btnR">▶</div>
 </div>
 
 <div id="panel">
   <div class="card" id="card">
     <h1>寿司大乱斗</h1>
-    <div class="sub">一块米饭，一片料，一把刀。<br>
-      左右跑，靠近了就砍。挨砍会退，血空了就倒下。<br>
-      场上四个，最后站着的是赢家。</div>
+    <div class="sub">左边一个键，右边一个键，就这两个。<br>
+      按住是往那边跑；松得早 = 转身挥刀，刀转一圈才砍得到人。<br>
+      按住不放再松 = 蓄力跳，跳过人头，落下来砸一下。</div>
     <button id="btnStart">开始</button>
-    <div class="tip">刀不长，得凑近了才砍得到。别背对着人跑。</div>
+    <div class="tip">四个里最后站着的是赢家。你手上那把刀不认人。</div>
   </div>
 </div>
 
@@ -62,7 +54,7 @@
   var panel = document.getElementById('panel');
   var card = document.getElementById('card');
   var W=0,H=0,DPR=1,GROUND=0;
-  var MOVE = 330, PAD_W = 92, PAD_H = 96;
+  var MOVE=330, BODY=96;
 
   function resize(){
     DPR = Math.min(window.devicePixelRatio||1, 2);
@@ -71,43 +63,39 @@
     cvs.style.width = W+'px'; cvs.style.height = H+'px';
     ctx.setTransform(DPR,0,0,DPR,0,0);
     GROUND = H*0.60;
-    PAD_W = Math.min(W*0.15, 132);
-    PAD_H = PAD_W;
-    MOVE = Math.min(Math.max(W*0.5, 260), 520);
+    BODY = Math.min(W*0.16, 132);
+    MOVE = Math.min(Math.max(W*0.55, 280), 560);
   }
   resize();
   window.addEventListener('resize', resize);
 
-  var G = { phase:'idle', players:[], t:0, msg:'', msgT:0 };
-
   var KINDS = [
-    {name:'你',   rice:'#f6efe2', top:'#ff7a5c', edge:'#d4512f', isPlayer:true},
-    {name:'玉子', rice:'#f6efe2', top:'#ffd76a', edge:'#d9a72f'},
-    {name:'虾',   rice:'#f6efe2', top:'#ffb0bd', edge:'#d97e8f'},
-    {name:'海苔', rice:'#f6efe2', top:'#4a5a4a', edge:'#2c372c'}
+    {name:'你',   top:'#ff7a5c'},
+    {name:'玉子', top:'#ffd76a'},
+    {name:'虾',   top:'#ffb0bd'},
+    {name:'海苔', top:'#54654f'}
   ];
 
-  function makePlayer(kind, x){
+  var G = { phase:'idle', players:[], msg:'', msgT:0, shake:0 };
+
+  function makePlayer(kind, x, i){
     return {
-      kind:kind, x:x, vx:0, hp:100, facing:1,
-      cd:0, atk:0, hurt:0, dead:false,
-      isPlayer:!!kind.isPlayer, aiTimer:0, target:null,
-      walk:0
+      kind:kind, x:x, y:0, vy:0, vx:0, hp:100, facing:i<2?1:-1,
+      holding:0, holdT:0, onGround:true, jumping:false,
+      slash:0, hurt:0, dead:false, isPlayer:!!kind.isPlayer,
+      aiTimer:0.5 + Math.random()*0.6, side:(i%2?1:-1)
     };
   }
 
   function start(){
     if(G.phase==='play') return;
     G.players = [];
-    var n = KINDS.length;
-    for(var i=0;i<n;i++){
-      var x = W*(0.14 + 0.72*i/(n-1));
-      var pl = makePlayer(KINDS[i], x);
-      pl.side = (i%2===1) ? 1 : -1;
-      G.players.push(pl);
+    for(var i=0;i<KINDS.length;i++){
+      var x = W*(0.15 + 0.70*i/(KINDS.length-1));
+      G.players.push(makePlayer(KINDS[i], x, i));
     }
     G.phase='play';
-    G.msg=''; 
+    G.shake=0;
     panel.classList.add('hide');
     say('开打');
   }
@@ -118,82 +106,122 @@
 
   function end(){
     G.phase='over';
-    var me = G.players[0];
+    var me = G.players[0], left = alive();
     var head, sub;
-    var left = alive();
     if(!me.dead && left.length===1){ head='你赢了'; sub='场上就剩你一块寿司站着。'; }
-    else if(me.dead){
-      var top = left[0];
-      head = '倒下了';
-      sub = '最后站着的是' + top.kind.name + '。再来一把？';
-    } else { head='打完了'; sub='还剩 '+left.length+' 块。'; }
+    else if(me.dead){ head='倒下了'; sub='最后站着的是' + (left[0]?left[0].kind.name:'谁') + '。'; }
+    else { head='打完了'; sub='还剩 ' + left.length + ' 块。'; }
     card.innerHTML = '<h1>'+head+'</h1><div class="sub">'+sub+'</div>'+
       '<button id="btnAgain">再来一局</button>';
     panel.classList.remove('hide');
     document.getElementById('btnAgain').addEventListener('click', start);
   }
 
-  var keys = {l:false, r:false};
-  function bindHold(el, on, off){
-    el.addEventListener('pointerdown', function(e){ e.preventDefault(); el.classList.add('on'); on(); });
-    ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
-      el.addEventListener(ev, function(){ el.classList.remove('on'); if(off) off(); });
-    });
-  }
-  var btnL=document.getElementById('btnL'), btnR=document.getElementById('btnR'),
-      btnHit=document.getElementById('btnHit');
-  bindHold(btnL, function(){keys.l=true;}, function(){keys.l=false;});
-  bindHold(btnR, function(){keys.r=true;}, function(){keys.r=false;});
-  btnHit.addEventListener('pointerdown', function(e){ e.preventDefault(); doHit(G.players[0]); });
-  btnHit.addEventListener('click', function(){ doHit(G.players[0]); });
-
-  document.getElementById('btnStart').addEventListener('click', start);
-  document.getElementById('btnStart').addEventListener('pointerdown', function(e){ e.preventDefault(); start(); });
-
-  function doHit(p){
-    if(!p || p.dead || G.phase!=='play') return;
-    if(p.cd > 0) return;
-    p.cd = 0.42; p.atk = 0.26;
-    // 判定：面前一段距离
-    var reach = PAD_W*1.15;
-    var lo = p.facing>0 ? p.x+PAD_W*0.2 : p.x-PAD_W*0.2-reach;
-    var hi = lo + reach;
+  // ---------- 动作 ----------
+  function swing(p){
+    if(p.dead || p.slash>0 || G.phase!=='play') return;
+    p.slash = 0.26;
+    var reach = BODY*0.95, lo, hi;
+    if(p.facing>0){ lo = p.x + BODY*0.2; hi = lo + reach; }
+    else { hi = p.x - BODY*0.2; lo = hi - reach; }
     G.players.forEach(function(q){
       if(q===p || q.dead) return;
-      if(q.x > lo - PAD_W*0.3 && q.x < hi + PAD_W*0.3){
-        q.hp -= 13;
-        q.hurt = 0.22;
-        q.x += p.facing * 26;
-        q.x = Math.max(PAD_W*0.4, Math.min(W-PAD_W*0.4, q.x));
-        if(q.hp <= 0){ q.hp = 0; q.dead = true; q.vx = p.facing*90; }
+      if(q.x + BODY*0.3 > lo && q.x - BODY*0.3 < hi && q.y < BODY*0.9){
+        damage(q, 11, p.facing, 34);
       }
     });
   }
 
+  function jump(p, dir, power){
+    if(p.dead || !p.onGround) return;
+    p.onGround=false; p.jumping=true;
+    p.vy = -(430 + power*430);
+    p.vx = dir * MOVE * (0.5 + power*0.7);
+    p.facing = dir || p.facing;
+  }
+
+  function land(p){
+    p.onGround=true; p.jumping=false; p.y=0; p.vy=0; p.vx=0;
+    G.shake = 0.25;
+    G.players.forEach(function(q){
+      if(q===p || q.dead) return;
+      if(Math.abs(q.x-p.x) < BODY*1.05 && q.y < BODY*0.5){
+        damage(q, 14, q.x>p.x?1:-1, 60);
+      }
+    });
+  }
+
+  function damage(q, amount, dir, knock){
+    q.hp -= amount;
+    q.hurt = 0.24;
+    q.x += dir * knock;
+    q.x = Math.max(BODY*0.45, Math.min(W-BODY*0.45, q.x));
+    if(q.hp <= 0){ q.hp = 0; q.dead = true; q.vx = dir*120; q.vy = -260; }
+  }
+
+  // ---------- 输入：按住走，早松挥刀，长按蓄力跳 ----------
+  var hold = null; // {dir, t}
+  function press(dir){
+    var p = G.players[0];
+    if(!p || p.dead || G.phase!=='play') return;
+    hold = {dir:dir, t:0};
+    p.holding = dir;
+  }
+  function release(){
+    var p = G.players[0];
+    if(!hold || !p){ hold=null; if(p) p.holding=0; return; }
+    var t = hold.t, dir = hold.dir;
+    hold = null;
+    p.holding = 0;
+    if(p.dead) return;
+    if(t < 0.22){
+      p.facing = dir;
+      swing(p);
+    } else {
+      jump(p, dir, Math.min(t, 1.1)/1.1);
+    }
+  }
+
+  function bindKey(el, dir){
+    el.addEventListener('pointerdown', function(e){ e.preventDefault(); el.classList.add('on'); press(dir); });
+    ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
+      el.addEventListener(ev, function(){ el.classList.remove('on'); release(); });
+    });
+  }
+  bindKey(document.getElementById('btnL'), -1);
+  bindKey(document.getElementById('btnR'), 1);
+
+  var bStart = document.getElementById('btnStart');
+  bStart.addEventListener('click', start);
+  bStart.addEventListener('pointerdown', function(e){ e.preventDefault(); start(); });
+
+  // ---------- AI：走过去、早松挥刀、偶尔蓄力跳 ----------
   function aiStep(p, dt){
     var others = G.players.filter(function(q){ return q!==p && !q.dead; });
     if(!others.length) return;
     var t = others[0], best = 1e9;
-    others.forEach(function(q){
-      var d = Math.abs(q.x-p.x);
-      if(d<best){best=d; t=q;}
-    });
+    others.forEach(function(q){ var d=Math.abs(q.x-p.x); if(d<best){best=d; t=q;} });
+
+    if(!p.onGround) return;
+
     var side = p.side || 1;
-    var wantX = t.x + side * PAD_W*0.9;
-    wantX = Math.max(PAD_W*0.4, Math.min(W-PAD_W*0.4, wantX));
+    var wantX = t.x + side*BODY*0.55;
+    wantX = Math.max(BODY*0.45, Math.min(W-BODY*0.45, wantX));
     var dx = wantX - p.x;
-    if(Math.abs(dx) > 24){
-      p.facing = (t.x - p.x) > 0 ? 1 : -1;
-      p.x += (dx>0?1:-1) * MOVE*0.8 * dt;
-    } else {
+
+    p.aiTimer -= dt;
+    if(Math.abs(dx) > BODY*0.25){
       p.facing = dx>0?1:-1;
-      p.aiTimer -= dt;
+      p.x += (dx>0?1:-1)*MOVE*0.75*dt;
+      p.x = Math.max(BODY*0.45, Math.min(W-BODY*0.45, p.x));
+    } else {
+      p.facing = (t.x - p.x) > 0 ? 1 : -1;
       if(p.aiTimer <= 0){
-        p.aiTimer = 0.55 + Math.random()*0.35;
-        doHit(p);
+        p.aiTimer = 0.5 + Math.random()*0.45;
+        if(Math.random() < 0.16){ jump(p, p.facing, 0.4 + Math.random()*0.3); }
+        else { swing(p); }
       }
     }
-    p.x = Math.max(PAD_W*0.4, Math.min(W-PAD_W*0.4, p.x));
   }
 
   var last=0;
@@ -203,30 +231,48 @@
 
     if(G.phase==='play'){
       var me = G.players[0];
-      if(me && !me.dead){
-        var dir = (keys.l?-1:0) + (keys.r?1:0);
-        if(dir){ me.facing = dir; me.x += dir*MOVE*dt; me.walk += Math.abs(dir)*dt*12; }
-        me.x = Math.max(PAD_W*0.4, Math.min(W-PAD_W*0.4, me.x));
+
+      if(hold && me && !me.dead){
+        hold.t += dt;
+        me.facing = hold.dir;
+        if(me.onGround){
+          me.x += hold.dir * MOVE * dt;
+          me.x = Math.max(BODY*0.45, Math.min(W-BODY*0.45, me.x));
+        }
       }
+
       G.players.forEach(function(p){
-        if(p.cd>0) p.cd -= dt;
-        if(p.atk>0) p.atk -= dt;
+        if(p.slash>0) p.slash -= dt;
         if(p.hurt>0) p.hurt -= dt;
-        if(p.dead){
-          if(Math.abs(p.vx)>4){ p.x += p.vx*dt; p.vx *= 0.86; }
-        } else if(!p.isPlayer){
+
+        if(!p.onGround){
+          p.vy += 1650*dt;
+          p.y -= p.vy*dt;          // y = 离地高度（负数向上）
+          p.x += p.vx*dt;
+          p.x = Math.max(BODY*0.45, Math.min(W-BODY*0.45, p.x));
+          if(p.y >= 0){ p.y = 0; land(p); }
+        }
+
+        if(p.dead && !p.onGround){
+          p.vy += 1650*dt;
+          p.y -= p.vy*dt;
+          if(p.y >= 0){ p.y = 0; p.vy=0; p.onGround=true; }
+        } else if(p.dead){
+          p.x += p.vx*dt; p.vx *= 0.9;
+        } else if(!p.isPlayer && p.onGround){
           aiStep(p, dt);
         }
       });
 
-      var left = G.players.filter(function(p){ return !p.dead; });
-      if(left.length <= 1){ end(); }
+      if(G.shake > 0) G.shake -= dt;
+      if(alive().length <= 1) end();
     }
 
     draw(now);
     requestAnimationFrame(frame);
   }
 
+  // ---------- 画 ----------
   function roundRect(x,y,w,h,r){
     ctx.beginPath();
     ctx.moveTo(x+r,y);
@@ -239,68 +285,74 @@
 
   function drawSushi(p, now){
     var k = p.kind;
-    var bob = p.dead ? 0 : Math.sin((now/1000)*6 + p.x*0.02) * 2;
-    var y = GROUND + bob;
-    var w = PAD_W, h = PAD_H*0.72;
+    var w = BODY, h = BODY*0.78;
+    var baseY = GROUND - p.y;            // p.y 负值 = 在空中
+    var bob = (p.onGround && !p.dead) ? Math.sin((now/1000)*6 + p.x*0.02)*2 : 0;
+    var y = baseY + bob;
+
+    // 影子
+    var sh = 1 - Math.min(0.7, (-p.y)/(BODY*2.4));
+    ctx.fillStyle = 'rgba(0,0,0,'+(0.38*sh)+')';
+    ctx.beginPath(); ctx.ellipse(p.x, GROUND+BODY*0.46, w*0.42*sh, 12*sh, 0, 0, Math.PI*2); ctx.fill();
 
     ctx.save();
     if(p.dead){
-      ctx.translate(p.x, GROUND + 40);
-      ctx.rotate(Math.PI/2 * 0.92);
-      ctx.globalAlpha = 0.5;
-      ctx.translate(-p.x, -(GROUND+40));
+      ctx.translate(p.x, baseY);
+      ctx.rotate(Math.PI/2*0.94);
+      ctx.translate(-p.x, -baseY);
+      ctx.globalAlpha = 0.45;
+    } else if(p.hurt>0){
+      ctx.globalAlpha = 0.55 + Math.abs(Math.sin(now/30))*0.4;
     }
-    if(p.hurt>0){
-      ctx.globalAlpha = 0.55 + Math.sin(now/26)*0.35;
-    }
-
-    // 影子
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath(); ctx.ellipse(p.x, GROUND+46, w*0.44, 12, 0, 0, Math.PI*2); ctx.fill();
 
     // 米饭
-    ctx.fillStyle = k.rice;
-    roundRect(p.x-w/2, y, w, h, 22); ctx.fill();
+    ctx.fillStyle = '#f6efe2';
+    roundRect(p.x-w/2, y-h, w, h, h*0.42); ctx.fill();
 
     // 料
     ctx.fillStyle = k.top;
-    roundRect(p.x-w/2-4, y-14, w+8, h*0.52, 18); ctx.fill();
+    roundRect(p.x-w/2-4, y-h-h*0.16, w+8, h*0.46, h*0.22); ctx.fill();
 
     // 海苔带
-    ctx.fillStyle = 'rgba(20,24,20,0.85)';
-    ctx.fillRect(p.x-7, y-16, 14, h*0.62+16);
+    ctx.fillStyle = 'rgba(24,28,24,0.85)';
+    ctx.fillRect(p.x-w*0.08, y-h-h*0.18, w*0.16, h*1.1);
 
     // 眼睛
     if(!p.dead){
-      ctx.fillStyle = '#241a14';
-      var ex = p.facing*7;
-      ctx.beginPath(); ctx.arc(p.x-18+ex, y+h*0.48, 5.2, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(p.x+18+ex, y+h*0.48, 5.2, 0, Math.PI*2); ctx.fill();
-    } else {
-      ctx.strokeStyle='#241a14'; ctx.lineWidth=3;
-      ctx.beginPath();
-      ctx.moveTo(p.x-24,y+h*0.44); ctx.lineTo(p.x-12,y+h*0.52);
-      ctx.moveTo(p.x-12,y+h*0.44); ctx.lineTo(p.x-24,y+h*0.52);
-      ctx.stroke();
+      ctx.fillStyle='#241a14';
+      var ex = p.facing*6;
+      ctx.beginPath(); ctx.arc(p.x-w*0.19+ex, y-h*0.45, w*0.055, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x+w*0.19+ex, y-h*0.45, w*0.055, 0, Math.PI*2); ctx.fill();
     }
 
     // 刀
     if(!p.dead){
-      var swing = p.atk>0 ? (1 - p.atk/0.26) : 0;
-      var ang = p.facing>0 ? -0.5 + swing*1.9 : Math.PI+0.5 - swing*1.9;
+      var sw = p.slash>0 ? 1 - p.slash/0.26 : 0;
+      var ang = p.facing>0 ? -0.7 + sw*2.4 : Math.PI + 0.7 - sw*2.4;
       ctx.save();
-      ctx.translate(p.x + p.facing*w*0.42, y+h*0.4);
+      ctx.translate(p.x + p.facing*w*0.34, y-h*0.55);
       ctx.rotate(ang);
-      ctx.fillStyle='#d8dde4';
-      roundRect(0,-4, 66, 8, 4); ctx.fill();
+      ctx.fillStyle='#dfe4ea';
+      roundRect(0,-4, w*0.55, 8, 4); ctx.fill();
       ctx.fillStyle='#8a6b4a';
-      roundRect(-14,-5, 16, 10, 3); ctx.fill();
+      roundRect(-w*0.14,-5, w*0.15, 10, 3); ctx.fill();
       ctx.restore();
+
+      // 挥刀的弧
+      if(p.slash>0){
+        ctx.strokeStyle = 'rgba(255,255,255,'+(p.slash/0.26*0.75)+')';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        var r0 = w*0.85;
+        if(p.facing>0) ctx.arc(p.x, y-h*0.55, r0, -1.1 + (1-p.slash/0.26)*1.6, -0.4 + (1-p.slash/0.26)*1.6);
+        else ctx.arc(p.x, y-h*0.55, r0, Math.PI+0.4 - (1-p.slash/0.26)*1.6, Math.PI+1.1 - (1-p.slash/0.26)*1.6);
+        ctx.stroke();
+      }
     }
     ctx.restore();
 
-    // 血条
-    var bw = 76, bh = 7, bx = p.x-bw/2, by = y-46;
+    // 血条 + 名字
+    var bw = BODY*0.78, bh = 7, bx = p.x-bw/2, by = y-h-BODY*0.34;
     ctx.fillStyle='rgba(255,255,255,0.16)';
     roundRect(bx,by,bw,bh,4); ctx.fill();
     var hp = Math.max(0,p.hp)/100;
@@ -309,31 +361,43 @@
 
     ctx.textAlign='center';
     ctx.font='600 12px -apple-system,"PingFang SC",sans-serif';
-    ctx.fillStyle = p.isPlayer ? '#ffd27a' : 'rgba(255,255,255,0.42)';
+    ctx.fillStyle = p.isPlayer ? '#ffd27a' : 'rgba(255,255,255,0.4)';
     ctx.fillText(k.name, p.x, by-8);
+
+    // 蓄力条
+    if(p.isPlayer && hold && hold.t >= 0.22){
+      var ch = Math.min(hold.t,1.1)/1.1;
+      ctx.fillStyle='rgba(255,255,255,0.18)';
+      roundRect(bx, by-16, bw, 5, 3); ctx.fill();
+      ctx.fillStyle='#6ee7ff';
+      roundRect(bx, by-16, bw*ch, 5, 3); ctx.fill();
+    }
   }
 
   function draw(now){
-    // 台面
     var g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0,'#241a15'); g.addColorStop(0.6,'#191210'); g.addColorStop(1,'#100b09');
+    g.addColorStop(0,'#231a15'); g.addColorStop(0.62,'#181210'); g.addColorStop(1,'#0f0a08');
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
-    // 木纹
+    ctx.save();
+    if(G.shake>0){
+      ctx.translate((Math.random()-0.5)*8, (Math.random()-0.5)*8);
+    }
+
+    // 台面纹理
     ctx.strokeStyle='rgba(255,255,255,0.035)';
     ctx.lineWidth=2;
     for(var i=0;i<7;i++){
-      var yy = GROUND + 60 + i*38;
+      var yy = GROUND + 70 + i*40;
       ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(W,yy); ctx.stroke();
     }
-
-    // 地面线
-    ctx.strokeStyle='rgba(255,210,150,0.18)';
+    ctx.strokeStyle='rgba(255,210,150,0.20)';
     ctx.lineWidth=3;
-    ctx.beginPath(); ctx.moveTo(0,GROUND+52); ctx.lineTo(W,GROUND+52); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,GROUND+BODY*0.5); ctx.lineTo(W,GROUND+BODY*0.5); ctx.stroke();
 
     var order = G.players.slice().sort(function(a,b){ return (a.dead?0:1)-(b.dead?0:1); });
     order.forEach(function(p){ drawSushi(p, now); });
+    ctx.restore();
 
     if(G.msg && (now-G.msgT)<1100){
       var a = 1-(now-G.msgT)/1100;
@@ -341,7 +405,7 @@
       ctx.textAlign='center';
       ctx.fillStyle='#ffe6cf';
       ctx.font='800 26px -apple-system,"PingFang SC",sans-serif';
-      ctx.fillText(G.msg, W/2, H*0.3);
+      ctx.fillText(G.msg, W/2, H*0.26);
       ctx.globalAlpha = 1;
     }
   }
