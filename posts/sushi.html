@@ -62,6 +62,7 @@
   var panel = document.getElementById('panel');
   var card = document.getElementById('card');
   var W=0,H=0,DPR=1,GROUND=0;
+  var MOVE = 330, PAD_W = 92, PAD_H = 96;
 
   function resize(){
     DPR = Math.min(window.devicePixelRatio||1, 2);
@@ -69,7 +70,10 @@
     cvs.width = Math.floor(W*DPR); cvs.height = Math.floor(H*DPR);
     cvs.style.width = W+'px'; cvs.style.height = H+'px';
     ctx.setTransform(DPR,0,0,DPR,0,0);
-    GROUND = H*0.64;
+    GROUND = H*0.60;
+    PAD_W = Math.min(W*0.15, 132);
+    PAD_H = PAD_W;
+    MOVE = Math.min(Math.max(W*0.5, 260), 520);
   }
   resize();
   window.addEventListener('resize', resize);
@@ -82,8 +86,6 @@
     {name:'虾',   rice:'#f6efe2', top:'#ffb0bd', edge:'#d97e8f'},
     {name:'海苔', rice:'#f6efe2', top:'#4a5a4a', edge:'#2c372c'}
   ];
-
-  var MOVE = 330, PAD_W = 92, PAD_H = 96;
 
   function makePlayer(kind, x){
     return {
@@ -99,8 +101,10 @@
     G.players = [];
     var n = KINDS.length;
     for(var i=0;i<n;i++){
-      var x = W*(0.22 + 0.56*i/(n-1));
-      G.players.push(makePlayer(KINDS[i], x));
+      var x = W*(0.14 + 0.72*i/(n-1));
+      var pl = makePlayer(KINDS[i], x);
+      pl.side = (i%2===1) ? 1 : -1;
+      G.players.push(pl);
     }
     G.phase='play';
     G.msg=''; 
@@ -151,12 +155,12 @@
     if(p.cd > 0) return;
     p.cd = 0.42; p.atk = 0.26;
     // 判定：面前一段距离
-    var reach = 118;
-    var lo = p.facing>0 ? p.x+20 : p.x-20-reach;
+    var reach = PAD_W*1.15;
+    var lo = p.facing>0 ? p.x+PAD_W*0.2 : p.x-PAD_W*0.2-reach;
     var hi = lo + reach;
     G.players.forEach(function(q){
       if(q===p || q.dead) return;
-      if(q.x > lo - PAD_W*0.35 && q.x < hi + PAD_W*0.35){
+      if(q.x > lo - PAD_W*0.3 && q.x < hi + PAD_W*0.3){
         q.hp -= 13;
         q.hurt = 0.22;
         q.x += p.facing * 26;
@@ -174,10 +178,13 @@
       var d = Math.abs(q.x-p.x);
       if(d<best){best=d; t=q;}
     });
-    var dx = t.x - p.x;
-    if(Math.abs(dx) > 104){
-      p.facing = dx>0?1:-1;
-      p.x += p.facing * MOVE*0.82 * dt;
+    var side = p.side || 1;
+    var wantX = t.x + side * PAD_W*0.9;
+    wantX = Math.max(PAD_W*0.4, Math.min(W-PAD_W*0.4, wantX));
+    var dx = wantX - p.x;
+    if(Math.abs(dx) > 24){
+      p.facing = (t.x - p.x) > 0 ? 1 : -1;
+      p.x += (dx>0?1:-1) * MOVE*0.8 * dt;
     } else {
       p.facing = dx>0?1:-1;
       p.aiTimer -= dt;
