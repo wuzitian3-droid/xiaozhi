@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>上下对打</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:#0a0b0f;touch-action:none;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  canvas{display:block}
+  #panel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(8,9,13,.93);z-index:5;padding:22px}
+  #panel.hide{display:none}
+  .card{width:min(520px,92vw);background:#14161d;border:1px solid #24272f;
+    border-radius:18px;padding:28px 24px;color:#dfe3ee}
+  .card h1{font-size:25px;margin-bottom:10px;letter-spacing:.04em}
+  .card .sub{color:#7d8496;font-size:14.5px;line-height:1.95;margin-bottom:16px}
+  button{margin-top:12px;width:100%;height:60px;border:none;border-radius:14px;
+    font-size:18px;font-weight:700;letter-spacing:.1em;color:#12141b;
+    background:linear-gradient(160deg,#ffd666,#ffab3d)}
+  button:active{transform:translateY(1px)}
+  .tip{color:#5f6678;font-size:12.5px;line-height:1.8;margin-top:14px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="panel">
+  <div class="card" id="card">
+    <h1>上下对打</h1>
+    <div class="sub">上半是你，下半是我。<br>
+      手指在上半屏左右挪，接住那颗球。<br>
+      谁漏了谁丢分，先到 7 分赢。</div>
+    <button id="btnStart">开始</button>
+    <div class="tip">我下半只跟着球跑，不算快。你要是输了……手滑了吧。</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var cvs = document.getElementById('c');
+  var ctx = cvs.getContext('2d');
+  var panel = document.getElementById('panel');
+  var card = document.getElementById('card');
+  var W=0,H=0,DPR=1;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cvs.width = Math.floor(W*DPR); cvs.height = Math.floor(H*DPR);
+    cvs.style.width = W+'px'; cvs.style.height = H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  resize();
+  window.addEventListener('resize', function(){ resize(); layout(); });
+
+  var TOPC = '#ffd666', BOTC = '#6ee7ff';
+  var G = {
+    phase:'idle',      // idle | play | over
+    padW:0, padH:0, r:0,
+    topX:0, botX:0, topY:0, botY:0,
+    bx:0, by:0, vx:0, vy:0,
+    speed:0, baseSpeed:0, maxSpeed:0,
+    score:{t:0,b:0},
+    win:7,
+    serveIn:0, msg:'', msgT:0
+  };
+
+  function layout(){
+    G.padW = Math.min(W*0.36, 240);
+    G.padH = Math.max(12, H*0.016);
+    G.r = Math.max(9, W*0.022);
+    G.topY = H*0.10;
+    G.botY = H - H*0.10 - G.padH;
+    G.baseSpeed = Math.max(420, H*0.42);
+    G.maxSpeed = Math.max(900, H*0.95);
+    if(G.phase==='idle'){ G.topX = W/2; G.botX = W/2; }
+  }
+  layout();
+
+  function beep(freq, dur){
+    try{
+      if(!window.__ac) window.__ac = new (window.AudioContext||window.webkitAudioContext)();
+      var ac = window.__ac;
+      if(ac.state==='suspended') ac.resume();
+      var o = ac.createOscillator(), g = ac.createGain();
+      o.type='sine'; o.frequency.value=freq; g.gain.value=0.05;
+      o.connect(g); g.connect(ac.destination);
+      o.start(); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime+dur);
+      o.stop(ac.currentTime+dur+0.02);
+    }catch(e){}
+  }
+
+  function say(t){
+    G.msg = t; G.msgT = performance.now();
+  }
+
+  function serve(winner){
+    G.bx = W/2;
+    G.by = winner===1 ? H*0.34 : H*0.66;
+    G.speed = G.baseSpeed;
+    G.vx = (Math.random()<0.5?-1:1) * G.speed * 0.55;
+    G.vy = (winner===1 ? 1 : -1) * G.speed * 0.84;
+    G.serveIn = 0;
+    G.phase = 'play';
+    say('发球');
+  }
+
+  function start(){
+    G.score = {t:0,b:0};
+    G.topX = W/2; G.botX = W/2;
+    layout();
+    panel.classList.add('hide');
+    G.phase = 'play';
+    serve(1);
+  }
+
+  function end(){
+    G.phase = 'over';
+    var t=G.score.t, b=G.score.b;
+    var head = t>b ? '你赢' : (b>t ? '我赢啦' : '平');
+    var sub = '你 ' + t + ' : ' + b + ' 我。';
+    if(b>t) sub += '嘿嘿，再来一把？';
+    else if(t>b) sub += '行吧，你手比我快。';
+    else sub += '就差一点点。';
+    card.innerHTML = '<h1>'+head+'</h1><div class="sub">'+sub+'</div>'+
+      '<button id="btnAgain">再来一局</button>';
+    panel.classList.remove('hide');
+    document.getElementById('btnAgain').addEventListener('click', start);
+  }
+
+  function hitPaddle(centerX, padY, dir){
+    // dir: -1 球向上（撞上拍）, +1 球向下（撞下拍）
+    if(dir<0){
+      if(G.vy>0) return false;
+      if(G.bx < centerX-G.padW/2-G.r || G.bx > centerX+G.padW/2+G.r) return false;
+      var low = padY+G.padH;
+      if(G.by-G.r > low || G.by-G.r < padY-G.r*2.5) return false;
+      G.by = low + G.r;
+    }else{
+      if(G.vy<0) return false;
+      if(G.bx < centerX-G.padW/2-G.r || G.bx > centerX+G.padW/2+G.r) return false;
+      if(G.by+G.r < padY || G.by+G.r > padY+G.padH+G.r*2.5) return false;
+      G.by = padY - G.r;
+    }
+    return true;
+  }
+
+  function bounce(centerX, dir){
+    var off = (G.bx-centerX)/(G.padW/2);
+    if(off>1) off=1; if(off<-1) off=-1;
+    G.speed = Math.min(G.maxSpeed, G.speed*1.05);
+    G.vx = off * G.speed * 0.85;
+    var vy2 = Math.sqrt(Math.max(G.speed*G.speed - G.vx*G.vx, 1));
+    G.vy = dir<0 ? -vy2 : vy2;
+    beep(dir<0?700:520, 0.07);
+  }
+
+  var last = 0;
+  function frame(now){
+    var dt = last ? Math.min((now-last)/1000, 0.05) : 0.016;
+    last = now;
+
+    if(G.phase==='play'){
+      G.bx += G.vx*dt;
+      G.by += G.vy*dt;
+
+      // 左右墙
+      if(G.bx < G.r){ G.bx = G.r; G.vx = -G.vx; }
+      if(G.bx > W-G.r){ G.bx = W-G.r; G.vx = -G.vx; }
+
+      if(G.vy<0 && hitPaddle(G.topX, G.topY, -1)) bounce(G.topX, -1);
+      if(G.vy>0 && hitPaddle(G.botX, G.botY, 1)) bounce(G.botX, 1);
+
+      // 我这边跟着球跑
+      var want = G.bx, lim = G.speed*0.92*dt;
+      var d = want - G.botX;
+      if(Math.abs(d) > G.padW*0.06){
+        G.botX += Math.max(-lim, Math.min(lim, d));
+      }
+      G.botX = Math.max(G.padW/2, Math.min(W-G.padW/2, G.botX));
+
+      // 出界
+      if(G.by < -G.r*3){ G.score.b++; say('你漏了'); beep(200,0.18); G.phase='wait'; G.serveIn = now+700; }
+      else if(G.by > H+G.r*3){ G.score.t++; say('我漏了'); beep(300,0.18); G.phase='wait'; G.serveIn = now+700; }
+    } else if(G.phase==='wait'){
+      if(now >= G.serveIn){
+        if(G.score.t>=G.win || G.score.b>=G.win){ end(); }
+        else { serve(G.score.t>=G.score.b ? 1 : 2); }
+      }
+    }
+
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  function draw(now){
+    ctx.clearRect(0,0,W,H);
+
+    var gt = ctx.createLinearGradient(0,0,0,H/2);
+    gt.addColorStop(0,'#151821'); gt.addColorStop(1,'#0d0f14');
+    ctx.fillStyle=gt; ctx.fillRect(0,0,W,H/2);
+
+    var gb = ctx.createLinearGradient(0,H/2,0,H);
+    gb.addColorStop(0,'#0f1820'); gb.addColorStop(1,'#0a1117');
+    ctx.fillStyle=gb; ctx.fillRect(0,H/2,W,H/2);
+
+    ctx.strokeStyle='rgba(255,255,255,0.10)';
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+
+    // 拍
+    function paddle(cx, y, color){
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      var x = cx-G.padW/2, rr = G.padH/2;
+      ctx.moveTo(x+rr,y);
+      ctx.arcTo(x+G.padW,y,x+G.padW,y+G.padH,rr);
+      ctx.arcTo(x+G.padW,y+G.padH,x,y+G.padH,rr);
+      ctx.arcTo(x,y+G.padH,x,y,rr);
+      ctx.arcTo(x,y,x+G.padW,y,rr);
+      ctx.closePath(); ctx.fill();
+    }
+    paddle(G.topX, G.topY, TOPC);
+    paddle(G.botX, G.botY, BOTC);
+
+    // 球
+    var g2 = ctx.createRadialGradient(G.bx,G.by,0,G.bx,G.by,G.r*2.6);
+    g2.addColorStop(0,'rgba(255,255,255,.55)');
+    g2.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=g2;
+    ctx.beginPath(); ctx.arc(G.bx,G.by,G.r*2.6,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#f4f7ff';
+    ctx.beginPath(); ctx.arc(G.bx,G.by,G.r,0,Math.PI*2); ctx.fill();
+
+    // 分数
+    ctx.textAlign='left';
+    ctx.font='600 15px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillStyle=TOPC; ctx.fillText('你', 22, H/2-58);
+    ctx.fillStyle=BOTC; ctx.fillText('小知', 22, H/2+34);
+
+    ctx.font='800 30px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillStyle=TOPC; ctx.fillText(String(G.score.t), 22, H/2-26);
+    ctx.fillStyle=BOTC; ctx.fillText(String(G.score.b), 22, H/2+66);
+
+    // 回合提示
+    if(G.msg && (now-G.msgT) < 900){
+      var a = 1-(now-G.msgT)/900;
+      ctx.globalAlpha = Math.max(0,a);
+      ctx.textAlign='center';
+      ctx.fillStyle='#e8ecf6';
+      ctx.font='700 22px -apple-system,"PingFang SC",sans-serif';
+      ctx.fillText(G.msg, W/2, H/2-8);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(255,255,255,0.26)';
+    ctx.font='600 13px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillText('先到 '+G.win+' 分', W-20, 28);
+  }
+
+  // 触摸 / 鼠标：只管上半
+  function moveTo(clientX){
+    G.topX = Math.max(G.padW/2, Math.min(W-G.padW/2, clientX));
+  }
+  cvs.addEventListener('touchstart', function(e){
+    e.preventDefault();
+    for(var i=0;i<e.touches.length;i++){
+      if(e.touches[i].clientY < H/2) moveTo(e.touches[i].clientX);
+    }
+  }, {passive:false});
+  cvs.addEventListener('touchmove', function(e){
+    e.preventDefault();
+    for(var i=0;i<e.touches.length;i++){
+      if(e.touches[i].clientY < H/2) moveTo(e.touches[i].clientX);
+    }
+  }, {passive:false});
+  cvs.addEventListener('mousemove', function(e){ moveTo(e.clientX); });
+
+  document.getElementById('btnStart').addEventListener('click', start);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
