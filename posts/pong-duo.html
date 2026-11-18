@@ -108,6 +108,7 @@
   }
 
   function start(){
+    if(G.phase==='play' || G.phase==='wait') return;
     G.score = {t:0,b:0};
     G.topX = W/2; G.botX = W/2;
     layout();
@@ -279,7 +280,10 @@
   }, {passive:false});
   cvs.addEventListener('mousemove', function(e){ moveTo(e.clientX); });
 
-  document.getElementById('btnStart').addEventListener('click', start);
+  var bStart = document.getElementById('btnStart');
+  bStart.addEventListener('click', start);
+  bStart.addEventListener('pointerdown', function(e){ e.preventDefault(); start(); });
+  bStart.addEventListener('touchstart', function(e){ e.preventDefault(); start(); }, {passive:false});
   requestAnimationFrame(frame);
 })();
 </script>
