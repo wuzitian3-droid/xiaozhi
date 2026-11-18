@@ -195,12 +195,28 @@
   bStart.addEventListener('click', start);
   bStart.addEventListener('pointerdown', function(e){ e.preventDefault(); start(); });
 
+  // 点哪儿都能开：省得手机上一紧张点偏
+  function anyStart(e){
+    if(G.phase !== 'idle') return;
+    if(e.target && e.target.id === 'btnAgain') return;
+    start();
+  }
+  document.addEventListener('pointerdown', anyStart);
+  document.addEventListener('touchstart', anyStart, {passive:true});
+  document.addEventListener('click', anyStart);
+
   // ---------- AI：走过去、早松挥刀、偶尔蓄力跳 ----------
   function aiStep(p, dt){
     var others = G.players.filter(function(q){ return q!==p && !q.dead; });
     if(!others.length) return;
-    var t = others[0], best = 1e9;
-    others.forEach(function(q){ var d=Math.abs(q.x-p.x); if(d<best){best=d; t=q;} });
+    if(!p.target || p.target.dead){ p.target = others[Math.floor(Math.random()*others.length)]; p.repick = 2 + Math.random()*2.5; }
+    p.repick -= dt;
+    if(p.repick <= 0){
+      p.repick = 2 + Math.random()*2.5;
+      p.target = others[Math.floor(Math.random()*others.length)];
+    }
+    var t = p.target;
+    if(!t || t.dead) return;
 
     if(!p.onGround) return;
 
@@ -255,6 +271,7 @@
 
         if(p.dead && p.onGround){
           p.x += p.vx*dt; p.vx *= 0.9;
+          p.x = Math.max(BODY*0.45, Math.min(W-BODY*0.45, p.x));
         } else if(!p.dead && !p.isPlayer && p.onGround){
           aiStep(p, dt);
         }
