@@ -17,15 +17,18 @@
   .card h1{font-size:26px;margin-bottom:10px;letter-spacing:.05em}
   .card .sub{color:#a08b7c;font-size:14.5px;line-height:1.95;margin-bottom:16px}
   .card .rank{color:#cbb7a4;font-size:15px;line-height:2.1;margin-bottom:10px}
+  .srow{display:flex;align-items:center;gap:12px;margin:2px 0 18px;color:#cbb7a4;font-size:14px}
+  .srow input{flex:1;height:26px;accent-color:#ffb45c}
+  .srow b{width:48px;text-align:right;color:#ffd27a;font-size:14px}
   button{width:100%;height:60px;border:none;border-radius:14px;font-size:18px;font-weight:700;
     letter-spacing:.1em;color:#1a1206;background:linear-gradient(160deg,#ffd27a,#ff9c3d)}
   button:active{transform:translateY(1px)}
   .tip{color:#6d5c50;font-size:12.5px;line-height:1.8;margin-top:14px}
-  #joy{position:fixed;left:0;top:0;width:0;height:0;z-index:4;pointer-events:none;
-    opacity:0;transition:opacity .12s}
+  #joy{position:fixed;left:22px;bottom:30px;width:132px;height:132px;z-index:4;pointer-events:none;
+    opacity:.35;transition:opacity .12s}
   #joy.on{opacity:1}
-  #joyRing{position:absolute;left:50%;top:50%;width:132px;height:132px;margin:-66px 0 0 -66px;
-    border-radius:50%;border:2px solid rgba(255,255,255,.16);background:rgba(255,255,255,.045)}
+  #joyRing{position:absolute;left:0;top:0;right:0;bottom:0;border-radius:50%;
+    border:2px solid rgba(255,255,255,.16);background:rgba(255,255,255,.045)}
   #joyKnob{position:absolute;left:50%;top:50%;width:60px;height:60px;margin:-30px 0 0 -30px;
     border-radius:50%;background:rgba(255,210,120,.55);border:2px solid rgba(255,235,190,.75);
     box-shadow:0 0 18px rgba(255,180,90,.35)}
@@ -42,6 +45,9 @@
     <div class="sub">按住屏幕往哪推，寿司就往哪走，松手就停。<br>
       把别人撞出台子，自己别掉——掉下去 1 秒半在中间复活。<br>
       台子上撒着糖，撞到就吃，60 秒里吃得多的人赢。</div>
+    <div class="srow"><span>快慢</span>
+      <input id="spd" type="range" min="60" max="180" step="5" value="100">
+      <b id="spdv">1.00×</b></div>
     <button id="btnStart">开始</button>
     <div class="tip">电脑上：WASD / 方向键。</div>
   </div>
@@ -57,7 +63,7 @@
   var W=0,H=0,DPR=1, CX=0, CY=0, R=0;
 
   var P = {                     // 可调参数（按台子半径缩放）
-    accel: 0, maxSpeed: 0, damping: 0.993, turnSpeed: 6.0,
+    accel: 0, maxSpeed: 0, damping: 0.993, turnSpeed: 6.0, spd: 1.0,
     pr: 0,                      // 玩家半径
     respawn: 1.5, invincible: 0.7,
     candyInit: 12, candyInterval: 1.3, candyMax: 16,
@@ -73,8 +79,8 @@
     CX = W/2; CY = H*0.40;
     R = Math.min(W*0.46, H*0.30);
     P.pr = R*0.082;
-    P.accel = R*5.0;
-    P.maxSpeed = R*2.0;
+    P.accel = R*3.6*(P.spd||1);
+    P.maxSpeed = R*1.7*(P.spd||1);
   }
 
   var KINDS = [
@@ -164,11 +170,12 @@
   var joyId = null, joyOx = 0, joyOy = 0;
   var JOY_R = 62;
 
-  function showJoy(x, y){
-    joyEl.style.left = x + 'px';
-    joyEl.style.top  = y + 'px';
+  function showJoy(cx, cy){
+    joyEl.style.left = (cx - 66) + 'px';
+    joyEl.style.top  = (cy - 66) + 'px';
+    joyEl.style.bottom = 'auto';
     joyEl.classList.add('on');
-    joyOx = x; joyOy = y;
+    joyOx = cx; joyOy = cy;
     moveKnob(0, 0);
   }
   function moveKnob(dx, dy){
@@ -176,35 +183,52 @@
   }
   function hideJoy(){
     joyEl.classList.remove('on');
+    joyEl.style.left = ''; joyEl.style.top = ''; joyEl.style.bottom = '';
     joy.x = joy.y = 0;
     moveKnob(0,0);
   }
 
-  cvs.addEventListener('pointerdown', function(e){
+  function inPanel(el){
+    while(el && el !== document.body){
+      if(el.id === 'panel') return true;
+      el = el.parentNode;
+    }
+    return false;
+  }
+
+  addEventListener('pointerdown', function(e){
     if(G.phase !== 'play' && G.phase !== 'countdown') return;
-    if(joyId !== null) return;
+    if(joyId !== null || inPanel(e.target)) return;
     joyId = e.pointerId;
-    showJoy(e.clientX, e.clientY);
+    // 按在摇杆圈里就从圈心算；按在别处，就把摇杆挪到手指底下
+    var r = joyEl.getBoundingClientRect();
+    var bx = r.left + r.width/2, by = r.top + r.height/2;
+    if(Math.hypot(e.clientX-bx, e.clientY-by) < r.width*0.75){
+      showJoy(bx, by);
+    } else {
+      showJoy(e.clientX, e.clientY);
+    }
     e.preventDefault();
-  });
-  cvs.addEventListener('pointermove', function(e){
+  }, {passive:false});
+
+  addEventListener('pointermove', function(e){
     if(e.pointerId !== joyId) return;
     var dx = e.clientX - joyOx, dy = e.clientY - joyOy;
     var d = Math.hypot(dx, dy);
     if(d > JOY_R){ dx = dx/d*JOY_R; dy = dy/d*JOY_R; }
     moveKnob(dx, dy);
-    var f = Math.min(1, d/JOY_R);
     joy.x = d>0 ? dx/JOY_R : 0;
     joy.y = d>0 ? dy/JOY_R : 0;
     e.preventDefault();
-  });
+  }, {passive:false});
+
   function endJoy(e){
     if(e.pointerId !== joyId) return;
     joyId = null;
     hideJoy();
   }
-  cvs.addEventListener('pointerup', endJoy);
-  cvs.addEventListener('pointercancel', endJoy);
+  addEventListener('pointerup', endJoy);
+  addEventListener('pointercancel', endJoy);
 
   // 键盘（电脑上也能玩）
   var keyDir = {};
@@ -225,6 +249,17 @@
     var v = keyVec(); joy.x = v.x; joy.y = v.y;
   });
 
+  // 快慢滑块
+  var spdEl = document.getElementById('spd'), spdvEl = document.getElementById('spdv');
+  function readSpd(){
+    P.spd = parseInt(spdEl.value,10)/100;
+    spdvEl.textContent = P.spd.toFixed(2) + '×';
+    resize();
+  }
+  spdEl.addEventListener('input', readSpd);
+  spdEl.addEventListener('change', readSpd);
+  readSpd();
+
   var bStart = document.getElementById('btnStart');
   bStart.addEventListener('click', reset);
   bStart.addEventListener('pointerdown', function(e){ e.preventDefault(); reset(); });
@@ -240,6 +275,30 @@
   // ---------- 物理 ----------
   function updatePlayers(dt){
     var list = G.players;
+    // 黏住的一对：谁也使不上劲，像一块儿飘
+    for(var s0=0;s0<list.length;s0++){
+      var p0=list[s0];
+      if(!p0.stuck) continue;
+      var o0 = p0.stuck.with;
+      if(!o0 || !o0.stuck || o0.stuck.with !== p0){ p0.stuck=null; continue; }
+      if(p0.id > o0.id) continue;
+      p0.stuck.t -= dt; o0.stuck.t = p0.stuck.t;
+      var dxs=o0.x-p0.x, dys=o0.y-p0.y, ds=Math.hypot(dxs,dys)||1;
+      var nxs=dxs/ds, nys=dys/ds;
+      var cvx=(p0.vel.x+o0.vel.x)/2, cvy=(p0.vel.y+o0.vel.y)/2;
+      var kd = Math.pow(0.985, dt*60);
+      cvx *= kd; cvy *= kd;
+      p0.vel.x=o0.vel.x=cvx; p0.vel.y=o0.vel.y=cvy;
+      p0.knock=0; o0.knock=0;
+      if(p0.stuck.t <= 0){
+        var push = P.maxSpeed*0.5;                 // 分开那一下，各自往两边弹开
+        p0.vel.x -= nxs*push; p0.vel.y -= nys*push;
+        o0.vel.x += nxs*push; o0.vel.y += nys*push;
+        p0.stuck=null; o0.stuck=null;
+        if(p0.human||o0.human) say('分开了');
+      }
+    }
+
     for(var i=0;i<list.length;i++){
       var p = list[i];
       if(p.state === 'fallen'){
@@ -272,8 +331,9 @@
 
       // 被撞飞的这一小会儿自己使不上劲，就靠惯性滑——这样撞一下才看得出后果
       if(p.knock <= 0 && amag > 0.01){
-        p.vel.x += ax2 * P.accel * dt;
-        p.vel.y += ay2 * P.accel * dt;
+        var push = P.accel * (p.human ? 1 : 0.82);   // 我这些对手不比我快
+        p.vel.x += ax2 * push * dt;
+        p.vel.y += ay2 * push * dt;
       }
 
       var sp = Math.hypot(p.vel.x, p.vel.y);
@@ -281,7 +341,7 @@
         p.vel.x = p.vel.x/sp*P.maxSpeed;
         p.vel.y = p.vel.y/sp*P.maxSpeed;
       }
-      var damp = Math.pow(p.knock > 0 ? 0.9985 : P.damping, dt*60);
+      var damp = Math.pow(p.knock > 0 ? 0.998 : P.damping, dt*60);
       p.vel.x *= damp; p.vel.y *= damp;
 
       p.x += p.vel.x * dt;
@@ -293,6 +353,7 @@
       for(var j=i2+1;j<list.length;j++){
         var a=list[i2], b=list[j];
         if(a.state==='fallen' || b.state==='fallen') continue;
+        if(a.stuck && a.stuck.with===b) continue;   // 已经黏在一起了，不再互撞
         var dx=b.x-a.x, dy=b.y-a.y;
         var d=Math.hypot(dx,dy), min=P.pr*2;
         if(d>0 && d<min){
@@ -304,11 +365,20 @@
           a.x -= nx*overlap*awN; a.y -= ny*overlap*awN;
           b.x += nx*overlap*bwN; b.y += ny*overlap*bwN;
 
+          // 偶尔会黏住：撞上的那一下粘在一起，谁也推不动，一块儿往外飘
+          if(!a.stuck && !b.stuck && a.state==='alive' && b.state==='alive' && Math.random() < 0.2){
+            var tt = 0.4 + Math.random()*0.45;
+            a.stuck = {with:b, t:tt};
+            b.stuck = {with:a, t:tt};
+            if(a.human||b.human) say('黏住了');
+            continue;
+          }
+
           var van = a.vel.x*nx + a.vel.y*ny;
           var vbn = b.vel.x*nx + b.vel.y*ny;
           var vrel = van - vbn;                    // 接近速度：整下撞击的力度就按它算
           if(vrel > 0){
-            var e = 0.95;                          // 弹性系数，接近真实刚体
+            var e = 0.90;                          // 弹性系数：撞完先弹开，不许黏在一起
             var jn = -(1+e)*vrel / (aw + bw);
             var ia = -jn*aw, ib = jn*bw;
             a.vel.x += ia*nx; a.vel.y += ia*ny;
@@ -318,14 +388,14 @@
             var tx=-ny, ty=nx;
             var vat = a.vel.x*tx + a.vel.y*ty;
             var vbt = b.vel.x*tx + b.vel.y*ty;
-            var jt = -(vat - vbt)*0.14;
+            var jt = -(vat - vbt)*0.10;
             if(aw+bw>0){ jt /= (aw+bw); }
             a.vel.x += jt*tx*aw; a.vel.y += jt*ty*aw;
             b.vel.x -= jt*tx*bw; b.vel.y -= jt*ty*bw;
 
             // 撞完谁被推走多远，跟相对速度成正比——撞得越快，飞得越远
-            var hit = Math.min(1.4, vrel/P.maxSpeed);
-            var stun = 0.10 + hit*0.42;
+            var hit = Math.min(1.2, vrel/P.maxSpeed);
+            var stun = 0.08 + hit*0.26;
             if(van > vbn){                         // a 追尾 b：b 站不住，a 还能迈步
               if(bw) b.knock = Math.max(b.knock, stun);
               if(aw) a.knock = Math.max(a.knock, stun*0.16);
@@ -333,6 +403,13 @@
               if(aw) a.knock = Math.max(a.knock, stun);
               if(bw) b.knock = Math.max(b.knock, stun*0.16);
             }
+
+            // 飞出去的速度封个顶，免得太远
+            [a,b].forEach(function(q){
+              var s = Math.hypot(q.vel.x, q.vel.y);
+              var cap = P.maxSpeed*1.45;
+              if(s > cap){ q.vel.x = q.vel.x/s*cap; q.vel.y = q.vel.y/s*cap; }
+            });
           }
         }
       }
@@ -349,7 +426,7 @@
         var outv = p3.vel.x*ex + p3.vel.y*ey;
         if(outv > 0){
           var kk = (dd - G.arenaR*0.9) / Math.max(1, lim - G.arenaR*0.9);
-          var cut = Math.min(outv, outv*(2.2 + kk*3.2)*dt);
+          var cut = Math.min(outv, outv*(3.4 + kk*4.5)*dt);
           p3.vel.x -= ex*cut; p3.vel.y -= ey*cut;
         }
       }
@@ -459,6 +536,7 @@
   }
 
   function draw(now){
+    joyEl.style.display = (G.phase==='play'||G.phase==='countdown') ? 'block' : 'none';
     var g = ctx.createLinearGradient(0,0,0,H);
     g.addColorStop(0,'#1d1512'); g.addColorStop(0.55,'#140f0d'); g.addColorStop(1,'#0b0807');
     ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
