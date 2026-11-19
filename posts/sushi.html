@@ -373,11 +373,12 @@
           // 偶尔会黏住：撞上的那一下粘在一起，谁也推不动，一块儿往外飘
           if(!a.stuck && !b.stuck && a.stickCool<=0 && b.stickCool<=0
              && a.state==='alive' && b.state==='alive'
-             && Math.random() < 0.3){
+             && vrel > P.maxSpeed*0.45
+             && Math.random() < 0.35){
             var tt = 0.4 + Math.random()*0.45;
             a.stuck = {with:b, t:tt};
             b.stuck = {with:a, t:tt};
-            a.stickCool = 2.5; b.stickCool = 2.5;      // 黏过一次，两个人都得缓一会儿
+            a.stickCool = 4.0; b.stickCool = 4.0;      // 黏过一次，两个人都得缓一会儿
             if(a.human||b.human) say('黏住了');
             continue;
           }
