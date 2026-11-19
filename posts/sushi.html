@@ -58,7 +58,7 @@
   var W=0,H=0,DPR=1, CX=0, CY=0, R=0;
 
   var P = {                     // 可调参数（按台子半径缩放）
-    accel: 0, maxSpeed: 0, damping: 0.975, turnSpeed: 4.0,
+    accel: 0, maxSpeed: 0, damping: 0.990, turnSpeed: 5.2,
     pr: 0,                      // 玩家半径
     respawn: 2.0, invincible: 0.7,
     candyInit: 12, candyInterval: 1.3, candyMax: 16,
@@ -74,8 +74,8 @@
     CX = W/2; CY = H*0.40;
     R = Math.min(W*0.46, H*0.30);
     P.pr = R*0.082;
-    P.accel = R*0.95;
-    P.maxSpeed = R*1.55;
+    P.accel = R*1.7;
+    P.maxSpeed = R*2.5;
   }
 
   var KINDS = [
@@ -235,7 +235,7 @@
         p.vel.x = p.vel.x/sp*P.maxSpeed;
         p.vel.y = p.vel.y/sp*P.maxSpeed;
       }
-      var damp = Math.pow(p.knock > 0 ? 0.995 : P.damping, dt*60);
+      var damp = Math.pow(p.knock > 0 ? 0.9985 : P.damping, dt*60);
       p.vel.x *= damp; p.vel.y *= damp;
 
       p.x += p.vel.x * dt;
@@ -262,15 +262,15 @@
           var van = a.vel.x*nx + a.vel.y*ny;
           var vbn = b.vel.x*nx + b.vel.y*ny;
           if(van - vbn > 0){            // 在接近
-            var e = 1.0;                // 弹性系数：1 = 完全弹性
+            var e = 1.3;                // 弹性系数：1.3 = 撞完比撞前还快一点，飞得狠
             var j = -(1+e)*(vbn-van) / (aw + bw);   // 等质量，分母是 1/m1+1/m2
             var ia = -j*aw, ib = j*bw;
             a.vel.x += ia*nx; a.vel.y += ia*ny;
             b.vel.x += ib*nx; b.vel.y += ib*ny;
             // 越快的撞击，被撞的那个被弹得越远（撞的人也会被返回来）
             var hitSpeed = van - vbn;
-            if(aw){ a.knock = Math.max(a.knock, 0.12 + hitSpeed/P.maxSpeed*0.22); }
-            if(bw){ b.knock = Math.max(b.knock, 0.12 + hitSpeed/P.maxSpeed*0.22); }
+            if(aw){ a.knock = Math.max(a.knock, 0.18 + hitSpeed/P.maxSpeed*0.4); }
+            if(bw){ b.knock = Math.max(b.knock, 0.18 + hitSpeed/P.maxSpeed*0.4); }
           }
         }
       }
@@ -487,7 +487,7 @@
       // 缩圈：过了三分之一时间开始收，一直收到一半大
       var passed = Math.max(0, (P.matchTime - G.timeLeft) - P.matchTime*0.3);
       var prog = Math.min(1, passed / (P.matchTime*0.6));
-      G.arenaR = R*(1 - 0.48*prog);
+      G.arenaR = R*(1 - 0.62*prog);
 
       updatePlayers(dt);
 
