@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>寿司大乱斗·自测</title>
+<title>寿司大乱斗自测</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent}
   html,body{height:100%;overflow:hidden;background:#0d0a08;touch-action:none;
@@ -44,7 +44,6 @@
     <h1>寿司大乱斗</h1>
     <div class="sub">按住屏幕往哪推，寿司就往哪走，松手就停。<br>
       把别人撞出台子，自己别掉——掉下去 1 秒半在中间复活。<br>
-      偶尔撞上会黏住一小会儿，谁也使不上劲，一块儿往外飘。<br>
       台子上撒着糖，撞到就吃，60 秒里吃得多的人赢。</div>
     <div class="srow"><span>快慢</span>
       <input id="spd" type="range" min="60" max="180" step="5" value="100">
@@ -96,6 +95,7 @@
     t:0,
     cdEnd:0,
     timeLeft:60,
+    stickAt:0,           // 还要等多久才允许下一次「黏」
     arenaR:0,
     players:[],
     candies:[],
@@ -132,6 +132,7 @@
     for(var i=0;i<P.candyInit;i++) spawnCandy();
     G.candyTimer = P.candyInterval;
     G.timeLeft = P.matchTime;
+    G.stickAt = 999999;      // 先关掉「黏」，想开的时候改成 4 + Math.random()*4
     G.arenaR = R;
     G.phase = 'countdown';
     G.cdEnd = performance.now() + P.countdown*1000;
@@ -333,6 +334,7 @@
 
       if(p.knock > 0) p.knock -= dt;
       if(p.stickCool > 0) p.stickCool -= dt;
+      if(i === 0 && G.stickAt > 0) G.stickAt -= dt;
 
       // 被撞飞的这一小会儿自己使不上劲，就靠惯性滑——这样撞一下才看得出后果
       if(p.knock <= 0 && !p.stuck && amag > 0.01){
@@ -371,13 +373,14 @@
           b.x += nx*overlap*bwN; b.y += ny*overlap*bwN;
 
           // 偶尔会黏住：撞上的那一下粘在一起，谁也推不动，一块儿往外飘
-          if(!a.stuck && !b.stuck && a.stickCool<=0 && b.stickCool<=0
+          if(G.stickAt <= 0 && !a.stuck && !b.stuck
              && a.state==='alive' && b.state==='alive'
-             && Math.random() < 0.3){
+             && vrel > P.maxSpeed*0.45
+             && Math.random() < 0.5){
             var tt = 0.4 + Math.random()*0.45;
             a.stuck = {with:b, t:tt};
             b.stuck = {with:a, t:tt};
-            a.stickCool = 2.5; b.stickCool = 2.5;      // 黏过一次，两个人都得缓一会儿
+            G.stickAt = 8 + Math.random()*7;          // 整张台子歇一阵，才轮到下一次
             if(a.human||b.human) say('黏住了');
             continue;
           }
@@ -677,27 +680,22 @@
   resize();
   requestAnimationFrame(frame);
 
-  // ===== 自动跑一局：让自己也玩一玩，看手感 =====
   function selfRun(){
-    var players = null;
     var falls = 0, stickEvents = 0, maxStuckFrames = 0, stuckRun = 0;
     var spdSum = 0, n = 0;
     reset();
     G.phase = 'play';
     G.timeLeft = P.matchTime;
-    players = G.players;
+    var players = G.players;
     var prev = players.map(function(p){ return p.state; });
     var wasStuck = players.map(function(p){ return false; });
-    var frames = 60 * 60;
-    for(var step=0; step<frames; step++){
+    for(var step=0; step<3600; step++){
       var passed = Math.max(0, (P.matchTime - G.timeLeft) - P.matchTime*0.3);
       var prog = Math.min(1, passed / (P.matchTime*0.6));
       G.arenaR = R*(1 - 0.62*prog);
-
       var aim = aiAim(players[0]);
       joy.x = aim.x; joy.y = aim.y;
       updatePlayers(1/60);
-
       for(var i=0;i<players.length;i++){
         var p = players[i];
         if(prev[i] !== 'fallen' && p.state === 'fallen') falls++;
@@ -708,19 +706,15 @@
       }
       if(players[0].stuck){ stuckRun++; if(stuckRun>maxStuckFrames) maxStuckFrames = stuckRun; }
       else stuckRun = 0;
-
       spdSum += Math.hypot(players[0].vel.x, players[0].vel.y); n++;
       G.timeLeft -= 1/60;
     }
     var avg = (spdSum/n)/P.maxSpeed;
-    var msg = '自测：摔下去的次数 ' + falls
-            + ' / 黏 ' + Math.round(stickEvents/2) + ' 次'
-            + ' / 平均速度 ' + avg.toFixed(2) + ' 倍上限'
-            + ' / 我被困最久 ' + Math.round(maxStuckFrames/60*100)/100 + ' 秒';
+    var msg = '自测：摔 ' + falls + ' 次 / 黏 ' + Math.round(stickEvents/2) + ' 次 / 平均速度 '
+            + avg.toFixed(2) + ' / 困最久 ' + (Math.round(maxStuckFrames/60*100)/100) + ' 秒';
     var d = document.createElement('div');
-    d.style.cssText = 'position:fixed;left:8px;right:8px;top:70px;z-index:99;color:#fff;' +
-      'background:rgba(0,0,0,.82);padding:10px;font:15px/1.6 monospace;white-space:pre-wrap';
-    d.id = 'selfout';
+    d.style.cssText = 'position:fixed;left:8px;right:8px;top:70px;z-index:99;color:#fff;'
+      + 'background:rgba(0,0,0,.82);padding:10px;font:15px/1.6 monospace;white-space:pre-wrap';
     d.textContent = msg;
     document.body.appendChild(d);
     document.title = msg;

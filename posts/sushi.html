@@ -44,7 +44,6 @@
     <h1>寿司大乱斗</h1>
     <div class="sub">按住屏幕往哪推，寿司就往哪走，松手就停。<br>
       把别人撞出台子，自己别掉——掉下去 1 秒半在中间复活。<br>
-      偶尔撞上会黏住一小会儿，谁也使不上劲，一块儿往外飘。<br>
       台子上撒着糖，撞到就吃，60 秒里吃得多的人赢。</div>
     <div class="srow"><span>快慢</span>
       <input id="spd" type="range" min="60" max="180" step="5" value="100">
@@ -96,6 +95,7 @@
     t:0,
     cdEnd:0,
     timeLeft:60,
+    stickAt:0,           // 还要等多久才允许下一次「黏」
     arenaR:0,
     players:[],
     candies:[],
@@ -132,6 +132,7 @@
     for(var i=0;i<P.candyInit;i++) spawnCandy();
     G.candyTimer = P.candyInterval;
     G.timeLeft = P.matchTime;
+    G.stickAt = 999999;      // 先关掉「黏」，想开的时候改成 4 + Math.random()*4
     G.arenaR = R;
     G.phase = 'countdown';
     G.cdEnd = performance.now() + P.countdown*1000;
@@ -333,6 +334,7 @@
 
       if(p.knock > 0) p.knock -= dt;
       if(p.stickCool > 0) p.stickCool -= dt;
+      if(i === 0 && G.stickAt > 0) G.stickAt -= dt;
 
       // 被撞飞的这一小会儿自己使不上劲，就靠惯性滑——这样撞一下才看得出后果
       if(p.knock <= 0 && !p.stuck && amag > 0.01){
@@ -360,7 +362,7 @@
         if(a.state==='fallen' || b.state==='fallen') continue;
         if(a.stuck && a.stuck.with===b) continue;   // 已经黏在一起了，不再互撞
         var dx=b.x-a.x, dy=b.y-a.y;
-        var d=Math.hypot(dx,dy), min=P.pr*2;
+        var d=Math.hypot(dx,dy), min=P.pr*2.15;   // 留一点缝，看着不像糊在一起
         if(d>0 && d<min){
           var nx=dx/d, ny=dy/d, overlap=min-d;
           var aw = a.state==='invincible' ? 0 : 1;   // 0 = 无限重，撞不动
@@ -371,14 +373,14 @@
           b.x += nx*overlap*bwN; b.y += ny*overlap*bwN;
 
           // 偶尔会黏住：撞上的那一下粘在一起，谁也推不动，一块儿往外飘
-          if(!a.stuck && !b.stuck && a.stickCool<=0 && b.stickCool<=0
+          if(G.stickAt <= 0 && !a.stuck && !b.stuck
              && a.state==='alive' && b.state==='alive'
              && vrel > P.maxSpeed*0.45
-             && Math.random() < 0.35){
+             && Math.random() < 0.5){
             var tt = 0.4 + Math.random()*0.45;
             a.stuck = {with:b, t:tt};
             b.stuck = {with:a, t:tt};
-            a.stickCool = 4.0; b.stickCool = 4.0;      // 黏过一次，两个人都得缓一会儿
+            G.stickAt = 8 + Math.random()*7;          // 整张台子歇一阵，才轮到下一次
             if(a.human||b.human) say('黏住了');
             continue;
           }
@@ -387,7 +389,7 @@
           var vbn = b.vel.x*nx + b.vel.y*ny;
           var vrel = van - vbn;                    // 接近速度：整下撞击的力度就按它算
           if(vrel > 0){
-            var e = 0.90;                          // 弹性系数：撞完先弹开，不许黏在一起
+            var e = 1.0;                           // 撞完一定要弹开，不许贴着走
             var jn = -(1+e)*vrel / (aw + bw);
             var ia = -jn*aw, ib = jn*bw;
             a.vel.x += ia*nx; a.vel.y += ia*ny;
@@ -397,10 +399,19 @@
             var tx=-ny, ty=nx;
             var vat = a.vel.x*tx + a.vel.y*ty;
             var vbt = b.vel.x*tx + b.vel.y*ty;
-            var jt = -(vat - vbt)*0.10;
+            var jt = -(vat - vbt)*0.05;
             if(aw+bw>0){ jt /= (aw+bw); }
             a.vel.x += jt*tx*aw; a.vel.y += jt*ty*aw;
             b.vel.x -= jt*tx*bw; b.vel.y -= jt*ty*bw;
+
+            // 就算两边都在慢慢挤，也至少把它们弹开一点，别贴着走
+            var sep = (b.vel.x-a.vel.x)*nx + (b.vel.y-a.vel.y)*ny;
+            var minSep = P.maxSpeed*0.5;
+            if(sep < minSep){
+              var add = (minSep - sep)*0.5;
+              a.vel.x -= nx*add; a.vel.y -= ny*add;
+              b.vel.x += nx*add; b.vel.y += ny*add;
+            }
 
             // 撞完谁被推走多远，跟相对速度成正比——撞得越快，飞得越远
             var hit = Math.min(1.2, vrel/P.maxSpeed);
@@ -521,11 +532,11 @@
 
     // 米饭
     ctx.fillStyle = '#f7f0e4';
-    ctx.beginPath(); ctx.ellipse(0,0, r*0.92, r*1.05, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0,0, r*0.88, r*1.0, 0, 0, Math.PI*2); ctx.fill();
 
     // 料
     ctx.fillStyle = p.kind.top;
-    ctx.beginPath(); ctx.ellipse(0,-r*0.18, r*0.86, r*0.72, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0,-r*0.18, r*0.82, r*0.68, 0, 0, Math.PI*2); ctx.fill();
 
     // 海苔带
     ctx.fillStyle = 'rgba(26,30,26,0.82)';
