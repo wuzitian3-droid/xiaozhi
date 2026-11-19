@@ -21,30 +21,29 @@
     letter-spacing:.1em;color:#1a1206;background:linear-gradient(160deg,#ffd27a,#ff9c3d)}
   button:active{transform:translateY(1px)}
   .tip{color:#6d5c50;font-size:12.5px;line-height:1.8;margin-top:14px}
-  #pad{position:fixed;left:0;right:0;bottom:0;height:26vh;display:flex;align-items:flex-end;
-    justify-content:space-between;padding:0 20px 24px;z-index:4;pointer-events:none}
-  .kbtn{width:106px;height:106px;border-radius:50%;border:2px solid rgba(255,255,255,.18);
-    background:rgba(255,255,255,.07);color:#f4e9de;font-size:34px;display:flex;
-    align-items:center;justify-content:center;backdrop-filter:blur(3px);pointer-events:auto}
-  .kbtn.on{background:rgba(255,210,120,.32);border-color:rgba(255,210,120,.65)}
+  #joy{position:fixed;left:0;top:0;width:0;height:0;z-index:4;pointer-events:none;
+    opacity:0;transition:opacity .12s}
+  #joy.on{opacity:1}
+  #joyRing{position:absolute;left:50%;top:50%;width:132px;height:132px;margin:-66px 0 0 -66px;
+    border-radius:50%;border:2px solid rgba(255,255,255,.16);background:rgba(255,255,255,.045)}
+  #joyKnob{position:absolute;left:50%;top:50%;width:60px;height:60px;margin:-30px 0 0 -30px;
+    border-radius:50%;background:rgba(255,210,120,.55);border:2px solid rgba(255,235,190,.75);
+    box-shadow:0 0 18px rgba(255,180,90,.35)}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 
-<div id="pad">
-  <div class="kbtn" id="btnL">◀</div>
-  <div class="kbtn" id="btnR">▶</div>
-</div>
+<div id="joy"><div id="joyRing"></div><div id="joyKnob"></div></div>
 
 <div id="panel">
   <div class="card" id="card">
     <h1>寿司大乱斗</h1>
-    <div class="sub">寿司一直往前滑，你只管左转右转。<br>
-      撞来撞去，谁掉出台子谁就飞下去，2 秒后在中间复活。<br>
+    <div class="sub">按住屏幕往哪推，寿司就往哪走，松手就停。<br>
+      把别人撞出台子，自己别掉——掉下去 1 秒半在中间复活。<br>
       台子上撒着糖，撞到就吃，60 秒里吃得多的人赢。</div>
     <button id="btnStart">开始</button>
-    <div class="tip">糖不用抢着护，谁碰到就是谁的。</div>
+    <div class="tip">电脑上：WASD / 方向键。</div>
   </div>
 </div>
 
@@ -58,9 +57,9 @@
   var W=0,H=0,DPR=1, CX=0, CY=0, R=0;
 
   var P = {                     // 可调参数（按台子半径缩放）
-    accel: 0, maxSpeed: 0, damping: 0.992, turnSpeed: 6.0,
+    accel: 0, maxSpeed: 0, damping: 0.993, turnSpeed: 6.0,
     pr: 0,                      // 玩家半径
-    respawn: 2.0, invincible: 0.7,
+    respawn: 1.5, invincible: 0.7,
     candyInit: 12, candyInterval: 1.3, candyMax: 16,
     countdown: 3.0, matchTime: 60.0
   };
@@ -74,8 +73,8 @@
     CX = W/2; CY = H*0.40;
     R = Math.min(W*0.46, H*0.30);
     P.pr = R*0.082;
-    P.accel = R*2.4;
-    P.maxSpeed = R*3.2;
+    P.accel = R*5.0;
+    P.maxSpeed = R*2.0;
   }
 
   var KINDS = [
@@ -117,6 +116,8 @@
 
   function reset(){
     resize();
+    for(var kk in keyDir) keyDir[kk]=0;
+    joy.x = joy.y = 0; joyId = null; if(joyEl) joyEl.classList.remove('on');
     G.players = [newPlayer(0,true), newPlayer(1,false), newPlayer(2,false), newPlayer(3,false)];
     G.candies = [];
     for(var i=0;i<P.candyInit;i++) spawnCandy();
@@ -156,34 +157,72 @@
     document.getElementById('btnAgain').addEventListener('pointerdown', function(e){ e.preventDefault(); reset(); });
   }
 
-  // ---------- 输入 ----------
-  var steer = 0;
-  function bindKey(el, dir){
-    var on = false;
-    el.addEventListener('pointerdown', function(e){
-      e.preventDefault();
-      if(!on){ on = true; el.classList.add('on'); steer += dir; }
-    });
-    ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
-      el.addEventListener(ev, function(){
-        if(on){ on = false; el.classList.remove('on'); steer -= dir; }
-      });
-    });
+  // ---------- 输入：漂移摇杆 ----------
+  var joy = {x:0, y:0};        // 单位方向 × 力度（0~1）
+  var joyEl = document.getElementById('joy');
+  var knobEl = document.getElementById('joyKnob');
+  var joyId = null, joyOx = 0, joyOy = 0;
+  var JOY_R = 62;
+
+  function showJoy(x, y){
+    joyEl.style.left = x + 'px';
+    joyEl.style.top  = y + 'px';
+    joyEl.classList.add('on');
+    joyOx = x; joyOy = y;
+    moveKnob(0, 0);
   }
-  bindKey(document.getElementById('btnL'), -1);
-  bindKey(document.getElementById('btnR'), 1);
+  function moveKnob(dx, dy){
+    knobEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+  }
+  function hideJoy(){
+    joyEl.classList.remove('on');
+    joy.x = joy.y = 0;
+    moveKnob(0,0);
+  }
+
+  cvs.addEventListener('pointerdown', function(e){
+    if(G.phase !== 'play' && G.phase !== 'countdown') return;
+    if(joyId !== null) return;
+    joyId = e.pointerId;
+    showJoy(e.clientX, e.clientY);
+    e.preventDefault();
+  });
+  cvs.addEventListener('pointermove', function(e){
+    if(e.pointerId !== joyId) return;
+    var dx = e.clientX - joyOx, dy = e.clientY - joyOy;
+    var d = Math.hypot(dx, dy);
+    if(d > JOY_R){ dx = dx/d*JOY_R; dy = dy/d*JOY_R; }
+    moveKnob(dx, dy);
+    var f = Math.min(1, d/JOY_R);
+    joy.x = d>0 ? dx/JOY_R : 0;
+    joy.y = d>0 ? dy/JOY_R : 0;
+    e.preventDefault();
+  });
+  function endJoy(e){
+    if(e.pointerId !== joyId) return;
+    joyId = null;
+    hideJoy();
+  }
+  cvs.addEventListener('pointerup', endJoy);
+  cvs.addEventListener('pointercancel', endJoy);
+
   // 键盘（电脑上也能玩）
   var keyDir = {};
+  function keyVec(){
+    var kx = ((keyDir['d']||keyDir['arrowright'])?1:0) - ((keyDir['a']||keyDir['arrowleft'])?1:0);
+    var ky = ((keyDir['s']||keyDir['arrowdown'])?1:0) - ((keyDir['w']||keyDir['arrowup'])?1:0);
+    var l = Math.hypot(kx, ky);
+    return l ? {x:kx/l, y:ky/l} : {x:0,y:0};
+  }
   addEventListener('keydown', function(e){
-    var d = (e.key==='a'||e.key==='A'||e.key==='ArrowLeft') ? -1
-          : (e.key==='d'||e.key==='D'||e.key==='ArrowRight') ? 1 : 0;
-    if(d && !keyDir[e.key]){ keyDir[e.key]=1; steer += d; }
-    if(G.phase==='menu' && (e.key===' '||e.key==='Enter')) reset();
+    var k = e.key.toLowerCase();
+    if(G.phase==='menu' && (e.key===' '||e.key==='Enter')){ reset(); return; }
+    keyDir[k] = 1;
+    var v = keyVec(); joy.x = v.x; joy.y = v.y;
   });
   addEventListener('keyup', function(e){
-    var d = (e.key==='a'||e.key==='A'||e.key==='ArrowLeft') ? -1
-          : (e.key==='d'||e.key==='D'||e.key==='ArrowRight') ? 1 : 0;
-    if(d && keyDir[e.key]){ keyDir[e.key]=0; steer -= d; }
+    keyDir[e.key.toLowerCase()] = 0;
+    var v = keyVec(); joy.x = v.x; joy.y = v.y;
   });
 
   var bStart = document.getElementById('btnStart');
@@ -213,21 +252,28 @@
         if(p.invTimer <= 0) p.state = 'alive';
       }
 
-      var dir = 0;
+      // 往哪推就往哪走（摇杆 / 电脑上的方向键）
+      var ax2=0, ay2=0;
       if(p.human){
-        dir = (steer>0?1:0) - (steer<0?1:0);
+        ax2 = joy.x; ay2 = joy.y;
       } else {
-        dir = aiSteer(p);
+        var git = aiAim(p);
+        ax2 = git.x; ay2 = git.y;
       }
-      p.turn = dir;
-      p.rot += dir * P.turnSpeed * dt;
+      var amag = Math.hypot(ax2, ay2);
+      if(amag > 0.01){
+        // 头朝着走的方向，慢慢转过去，不像指针那样瞬间翻转
+        var want = Math.atan2(ay2, ax2);
+        var df = ((want - p.rot + Math.PI*3) % (Math.PI*2)) - Math.PI;
+        p.rot += df * Math.min(1, 9*dt);
+      }
 
       if(p.knock > 0) p.knock -= dt;
 
       // 被撞飞的这一小会儿自己使不上劲，就靠惯性滑——这样撞一下才看得出后果
-      if(p.knock <= 0){
-        p.vel.x += Math.cos(p.rot) * P.accel * dt;
-        p.vel.y += Math.sin(p.rot) * P.accel * dt;
+      if(p.knock <= 0 && amag > 0.01){
+        p.vel.x += ax2 * P.accel * dt;
+        p.vel.y += ay2 * P.accel * dt;
       }
 
       var sp = Math.hypot(p.vel.x, p.vel.y);
@@ -342,14 +388,13 @@
     p.invTimer = P.invincible;
   }
 
-  // ---------- AI：找最近的糖，靠边就拐回中间 ----------
-  function aiSteer(p){
+  // ---------- AI：奔最近的糖，靠边就往中间撤 ----------
+  function aiAim(p){
     var cx=CX, cy=CY;
     var distCenter = Math.hypot(p.x-cx, p.y-cy);
     var aimX, aimY;
 
-    // 离边太近，先往中心拐
-    if(distCenter > G.arenaR*0.82){
+    if(distCenter > G.arenaR*0.8){          // 太靠边，先回中间
       aimX = cx; aimY = cy;
     } else {
       var best = null, bd = 1e9;
@@ -361,10 +406,10 @@
       if(best){ aimX = best.x; aimY = best.y; }
       else { aimX = cx; aimY = cy; }
     }
-    var want = Math.atan2(aimY-p.y, aimX-p.x);
-    var diff = ((want - p.rot + Math.PI*3) % (Math.PI*2)) - Math.PI;
-    if(Math.abs(diff) < 0.12) return 0;
-    return diff > 0 ? 1 : -1;
+    var vx = aimX-p.x, vy = aimY-p.y;
+    var l = Math.hypot(vx,vy);
+    if(l < 1) return {x:0,y:0};
+    return {x:vx/l, y:vy/l};
   }
 
   // ---------- 渲染 ----------
@@ -487,7 +532,7 @@
       ctx.fillText(String(Math.ceil(left)), CX, CY+30);
       ctx.font='600 16px -apple-system,"PingFang SC",sans-serif';
       ctx.fillStyle='#a08b7c';
-      ctx.fillText('左转 / 右转', CX, CY+90);
+      ctx.fillText('按住屏幕，往哪推就往哪走', CX, CY+90);
     }
 
     // 掉落提示
