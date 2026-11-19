@@ -117,6 +117,7 @@
       turn:0,
       knock:0,
       stuck:null,
+      stickCool:0,
       aiTargetCandy:null,
       color:KINDS[i].top
     };
@@ -297,6 +298,7 @@
         p0.vel.x -= nxs*push; p0.vel.y -= nys*push;
         o0.vel.x += nxs*push; o0.vel.y += nys*push;
         p0.stuck=null; o0.stuck=null;
+        p0.stickCool = 1.4; o0.stickCool = 1.4;
         if(p0.human||o0.human) say('分开了');
       }
     }
@@ -330,6 +332,7 @@
       }
 
       if(p.knock > 0) p.knock -= dt;
+      if(p.stickCool > 0) p.stickCool -= dt;
 
       // 被撞飞的这一小会儿自己使不上劲，就靠惯性滑——这样撞一下才看得出后果
       if(p.knock <= 0 && !p.stuck && amag > 0.01){
@@ -368,10 +371,13 @@
           b.x += nx*overlap*bwN; b.y += ny*overlap*bwN;
 
           // 偶尔会黏住：撞上的那一下粘在一起，谁也推不动，一块儿往外飘
-          if(!a.stuck && !b.stuck && a.state==='alive' && b.state==='alive' && Math.random() < 0.2){
+          if(!a.stuck && !b.stuck && a.stickCool<=0 && b.stickCool<=0
+             && a.state==='alive' && b.state==='alive'
+             && Math.random() < 0.3){
             var tt = 0.4 + Math.random()*0.45;
             a.stuck = {with:b, t:tt};
             b.stuck = {with:a, t:tt};
+            a.stickCool = 2.5; b.stickCool = 2.5;      // 黏过一次，两个人都得缓一会儿
             if(a.human||b.human) say('黏住了');
             continue;
           }
