@@ -43,8 +43,8 @@
   <div class="card" id="card">
     <h1>寿司大乱斗</h1>
     <div class="sub">按住屏幕往哪推，寿司就往哪走，松手就停。<br>
-      把别人撞出台子，自己别掉——掉下去 1 秒半在中间复活。<br>
-      台子上撒着糖，撞到就吃，60 秒里吃得多的人赢。</div>
+      掉下去就出局，不会回来，最后一个留在台上的赢。<br>
+      掉下去的那个变成一颗饲料——吃了会长大，越大越沉，撞人越狠。</div>
     <div class="srow"><span>快慢</span>
       <input id="spd" type="range" min="60" max="180" step="5" value="100">
       <b id="spdv">1.00×</b></div>
@@ -99,6 +99,7 @@
     arenaR:0,
     players:[],
     candies:[],
+    food:[],
     candyTimer:0,
     msg:'', msgT:0
   };
@@ -112,8 +113,9 @@
       rot: Math.atan2(-Math.sin(a), -Math.cos(a)),
       vel:{x:0,y:0},
       score:0,
-      state:'alive',          // alive | invincible | fallen
-      fallTimer:0, invTimer:0,
+      size:1,                 // 吃了饲料会长大，越大越重，撞人越狠
+      state:'alive',          // alive | invincible | out
+      invTimer:0,
       turn:0,
       knock:0,
       stuck:null,
@@ -123,12 +125,15 @@
     };
   }
 
+  function pRad(p){ return P.pr * (p.size || 1); }
+
   function reset(){
     resize();
     for(var kk in keyDir) keyDir[kk]=0;
     joy.x = joy.y = 0; joyId = null; if(joyEl) joyEl.classList.remove('on');
     G.players = [newPlayer(0,true), newPlayer(1,false), newPlayer(2,false), newPlayer(3,false)];
     G.candies = [];
+    G.food = [];
     for(var i=0;i<P.candyInit;i++) spawnCandy();
     G.candyTimer = P.candyInterval;
     G.timeLeft = P.matchTime;
@@ -152,16 +157,27 @@
 
   function endMatch(){
     G.phase = 'over';
-    var list = G.players.slice().sort(function(a,b){ return b.score - a.score; });
+    var alive = G.players.filter(function(p){ return p.state !== 'out'; });
+    var list = G.players.slice().sort(function(a,b){
+      var ao = a.state==='out' ? 1 : 0, bo = b.state==='out' ? 1 : 0;
+      if(ao !== bo) return ao - bo;             // 还活着的排前面
+      return b.score - a.score;
+    });
     var lines = '';
     list.forEach(function(p,i){
-      lines += (i+1) + '. ' + p.kind.name + ' — ' + p.score + ' 颗<br>';
+      lines += (i+1) + '. ' + p.kind.name + ' — '
+             + (p.state==='out' ? '出局' : p.score + ' 颗糖')
+             + (p.size>1.01 ? '（大 ' + p.size.toFixed(1) + ' 倍）' : '') + '<br>';
     });
-    var head = (list[0].human) ? '你赢了' : (list[0].kind.name + ' 赢了');
-    if(list[0].score === list[1].score) head = '打平';
-    card.innerHTML = '<h1>结算：' + head + '</h1><div class="rank">' + lines + '</div>' +
+    var head;
+    if(alive.length === 1){
+      head = alive[0].human ? '台上只剩你' : (alive[0].kind.name + ' 留到最后');
+    } else {
+      head = (list[0].human) ? '你糖最多' : (list[0].kind.name + ' 糖最多');
+    }
+    card.innerHTML = '<h1>' + head + '</h1><div class="rank">' + lines + '</div>' +
       '<button id="btnAgain">再来一局</button>' +
-      '<div class="tip">你吃了 ' + G.players[0].score + ' 颗糖。</div>';
+      '<div class="tip">掉下去就没了，最后一个留在台上的赢。</div>';
     panel.classList.remove('hide');
     document.getElementById('btnAgain').addEventListener('click', reset);
     document.getElementById('btnAgain').addEventListener('pointerdown', function(e){ e.preventDefault(); reset(); });
@@ -306,10 +322,8 @@
 
     for(var i=0;i<list.length;i++){
       var p = list[i];
-      if(p.state === 'fallen'){
-        p.fallTimer -= dt;
-        if(p.fallTimer <= 0) respawn(p);
-        continue;
+      if(p.state === 'out'){
+        continue;                     // 掉下去就没了，不会回来
       }
       if(p.state === 'invincible'){
         p.invTimer -= dt;
@@ -344,9 +358,10 @@
       }
 
       var sp = Math.hypot(p.vel.x, p.vel.y);
-      if(sp > P.maxSpeed && p.knock <= 0){
-        p.vel.x = p.vel.x/sp*P.maxSpeed;
-        p.vel.y = p.vel.y/sp*P.maxSpeed;
+      var speedCap = P.maxSpeed * (1 - 0.18*((p.size||1)-1));   // 越大越沉，跑得慢一点
+      if(sp > speedCap && p.knock <= 0){
+        p.vel.x = p.vel.x/sp*speedCap;
+        p.vel.y = p.vel.y/sp*speedCap;
       }
       var damp = Math.pow(p.knock > 0 ? 0.998 : P.damping, dt*60);
       p.vel.x *= damp; p.vel.y *= damp;
@@ -355,35 +370,23 @@
       p.y += p.vel.y * dt;
     }
 
-    // 玩家-玩家碰撞：等质量刚体，法向冲量 + 切向摩擦
+    // 玩家-玩家碰撞：不等质量刚体，法向冲量 + 切向摩擦
     for(var i2=0;i2<list.length;i2++){
       for(var j=i2+1;j<list.length;j++){
         var a=list[i2], b=list[j];
-        if(a.state==='fallen' || b.state==='fallen') continue;
-        if(a.stuck && a.stuck.with===b) continue;   // 已经黏在一起了，不再互撞
+        if(a.state==='out' || b.state==='out') continue;
         var dx=b.x-a.x, dy=b.y-a.y;
-        var d=Math.hypot(dx,dy), min=P.pr*2.15;   // 留一点缝，看着不像糊在一起
+        var ra=pRad(a), rb=pRad(b);
+        var d=Math.hypot(dx,dy), min=(ra+rb)*1.075;   // 留一点缝，看着不像糊在一起
         if(d>0 && d<min){
           var nx=dx/d, ny=dy/d, overlap=min-d;
-          var aw = a.state==='invincible' ? 0 : 1;   // 0 = 无限重，撞不动
-          var bw = b.state==='invincible' ? 0 : 1;
+          var ma=(a.size||1)*(a.size||1), mb=(b.size||1)*(b.size||1);   // 面积当质量，越大越沉
+          var aw = a.state==='invincible' ? 0 : 1/ma;   // 0 = 无限重，撞不动
+          var bw = b.state==='invincible' ? 0 : 1/mb;
           if(aw+bw===0){ aw=0.5; bw=0.5; }
           var awN = aw/(aw+bw), bwN = bw/(aw+bw);
           a.x -= nx*overlap*awN; a.y -= ny*overlap*awN;
           b.x += nx*overlap*bwN; b.y += ny*overlap*bwN;
-
-          // 偶尔会黏住：撞上的那一下粘在一起，谁也推不动，一块儿往外飘
-          if(G.stickAt <= 0 && !a.stuck && !b.stuck
-             && a.state==='alive' && b.state==='alive'
-             && vrel > P.maxSpeed*0.45
-             && Math.random() < 0.5){
-            var tt = 0.4 + Math.random()*0.45;
-            a.stuck = {with:b, t:tt};
-            b.stuck = {with:a, t:tt};
-            G.stickAt = 8 + Math.random()*7;          // 整张台子歇一阵，才轮到下一次
-            if(a.human||b.human) say('黏住了');
-            continue;
-          }
 
           var van = a.vel.x*nx + a.vel.y*ny;
           var vbn = b.vel.x*nx + b.vel.y*ny;
@@ -416,18 +419,19 @@
             // 撞完谁被推走多远，跟相对速度成正比——撞得越快，飞得越远
             var hit = Math.min(1.2, vrel/P.maxSpeed);
             var stun = 0.08 + hit*0.26;
-            if(van > vbn){                         // a 追尾 b：b 站不住，a 还能迈步
-              if(bw) b.knock = Math.max(b.knock, stun);
-              if(aw) a.knock = Math.max(a.knock, stun*0.16);
-            } else {
-              if(aw) a.knock = Math.max(a.knock, stun);
-              if(bw) b.knock = Math.max(b.knock, stun*0.16);
+            var victim = (van > vbn) ? b : a;
+            var hitter = (van > vbn) ? a : b;
+            if(victim.state !== 'invincible'){
+              victim.knock = Math.max(victim.knock, stun/Math.sqrt(victim.size||1));
+            }
+            if(hitter.state !== 'invincible'){
+              hitter.knock = Math.max(hitter.knock, stun*0.16);
             }
 
             // 飞出去的速度封个顶，免得太远
             [a,b].forEach(function(q){
               var s = Math.hypot(q.vel.x, q.vel.y);
-              var cap = P.maxSpeed*1.45;
+              var cap = P.maxSpeed*1.6;
               if(s > cap){ q.vel.x = q.vel.x/s*cap; q.vel.y = q.vel.y/s*cap; }
             });
           }
@@ -435,12 +439,13 @@
       }
     }
 
-    // 边界：先有一段边缘阻力，挣得回来；真冲出去才掉
+    // 边界：先有一段边缘阻力，挣得回来；真冲出去就掉，掉出去就出局
     for(var i3=0;i3<list.length;i3++){
       var p3 = list[i3];
-      if(p3.state==='fallen') continue;
+      if(p3.state==='out') continue;
       var dd = Math.hypot(p3.x-CX, p3.y-CY);
-      var lim = G.arenaR + P.pr*0.45;
+      var r3 = pRad(p3);
+      var lim = G.arenaR + r3*0.45;
       if(dd > G.arenaR*0.9 && dd <= lim && dd > 0){
         var ex=(p3.x-CX)/dd, ey=(p3.y-CY)/dd;
         var outv = p3.vel.x*ex + p3.vel.y*ey;
@@ -451,12 +456,33 @@
         }
       }
       if(dd > lim){
-        if(p3.stuck && p3.stuck.with){ p3.stuck.with.stuck = null; }
-        p3.stuck = null;
-        p3.state = 'fallen';
-        p3.fallTimer = P.respawn;
+        p3.state = 'out';
         p3.vel.x = p3.vel.y = 0;
-        if(p3.human) say('你掉下去了');
+        p3.knock = 0;
+        // 掉下去的那个变成一颗饲料，留在台子上，谁吃谁长大
+        var fa = Math.atan2(p3.y-CY, p3.x-CX);
+        var fr = Math.min(G.arenaR*0.72, dd*0.8);
+        G.food.push({
+          x: CX + Math.cos(fa)*fr,
+          y: CY + Math.sin(fa)*fr,
+          size: 1, col: p3.kind.top, phase: Math.random()*6.28
+        });
+        if(p3.human) say('你出局了');
+      }
+    }
+
+    // 饲料：吃掉就变大，越大越重，撞人越狠
+    for(var fk=G.food.length-1;fk>=0;fk--){
+      var fd = G.food[fk];
+      for(var fm=0;fm<list.length;fm++){
+        var fp = list[fm];
+        if(fp.state==='out') continue;
+        if(Math.hypot(fp.x-fd.x, fp.y-fd.y) < pRad(fp) + P.pr*0.4){
+          fp.size = Math.min(2.0, (fp.size||1) + 0.18);
+          if(fp.human) say('长大了一点');
+          G.food.splice(fk,1);
+          break;
+        }
       }
     }
 
@@ -465,8 +491,8 @@
       var c = G.candies[k];
       for(var m=0;m<list.length;m++){
         var pm = list[m];
-        if(pm.state==='fallen') continue;
-        if(Math.hypot(pm.x-c.x, pm.y-c.y) < P.pr + R*0.055){
+        if(pm.state==='out') continue;
+        if(Math.hypot(pm.x-c.x, pm.y-c.y) < pRad(pm) + R*0.055){
           pm.score++;
           G.candies.splice(k,1);
           break;
@@ -514,7 +540,7 @@
 
   // ---------- 渲染 ----------
   function drawSushi(p, now){
-    var r = P.pr;
+    var r = pRad(p);
     ctx.save();
     ctx.translate(p.x, p.y);
 
@@ -524,7 +550,7 @@
 
     ctx.rotate(p.rot + Math.PI/2);
 
-    if(p.state==='fallen'){
+    if(p.state==='out'){
       ctx.globalAlpha = 0.25;
     } else if(p.state==='invincible'){
       ctx.globalAlpha = 0.65 + Math.abs(Math.sin(now/110))*0.35;
@@ -555,7 +581,7 @@
     ctx.textAlign='center';
     ctx.font='600 12px -apple-system,"PingFang SC",sans-serif';
     ctx.fillStyle = p.human ? '#ffd27a' : 'rgba(255,255,255,0.45)';
-    ctx.fillText(p.kind.name, p.x, p.y + P.pr*2.1);
+    ctx.fillText(p.kind.name, p.x, p.y + r*1.9);
   }
 
   function draw(now){
@@ -602,7 +628,20 @@
       ctx.beginPath(); ctx.arc(c.x, c.y, rr, 0, Math.PI*2); ctx.fill();
     });
 
-    G.players.slice().sort(function(a,b){ return (a.state==='fallen'?0:1)-(b.state==='fallen'?0:1); })
+    // 饲料：出局的人留下的，吃了会长大
+    G.food.forEach(function(f){
+      var pulse = 1 + Math.sin(now/260 + f.phase)*0.10;
+      var fr = R*0.055*pulse;
+      ctx.fillStyle = 'rgba(255,235,190,0.18)';
+      ctx.beginPath(); ctx.arc(f.x, f.y, fr*1.7, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = f.col;
+      ctx.beginPath(); ctx.arc(f.x, f.y, fr, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,245,220,0.75)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(f.x, f.y, fr, 0, Math.PI*2); ctx.stroke();
+    });
+
+    G.players.slice().sort(function(a,b){ return (a.state==='out'?0:1)-(b.state==='out'?0:1); })
       .forEach(function(p){ drawSushi(p, now); });
 
     // 黏在一起的两个，中间拉一根带子
@@ -623,7 +662,9 @@
       ctx.fillStyle = p.kind.top;
       ctx.beginPath(); ctx.arc(24, y-5, 6, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = p.human ? '#f5ead9' : 'rgba(255,255,255,0.55)';
-      ctx.fillText(p.kind.name + '  ' + p.score, 40, y);
+      var tag = p.state==='out' ? '出局'
+              : (p.size>1.01 ? p.size.toFixed(1) + '×·' + p.score : p.score + '');
+      ctx.fillText(p.kind.name + '  ' + tag, 40, y);
     });
 
     // 时间
@@ -679,7 +720,12 @@
       }
 
       G.timeLeft -= dt;
-      if(G.timeLeft <= 0){ G.timeLeft = 0; endMatch(); }
+
+      // 只剩一个还在台上，就结束
+      var stillIn = 0;
+      for(var si=0; si<G.players.length; si++){ if(G.players[si].state !== 'out') stillIn++; }
+      if(stillIn <= 1){ endMatch(); }
+      else if(G.timeLeft <= 0){ G.timeLeft = 0; endMatch(); }
     }
 
     draw(now);
